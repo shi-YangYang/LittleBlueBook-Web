@@ -6,7 +6,7 @@
 
 | ID | 名称 | 状态 | 目录 |
 | --- | --- | --- | --- |
-| SPEC-001 | 项目工程基础 | Blocked | `spec-001-project-foundation/` |
+| SPEC-001 | 项目工程基础 | Accepted | `spec-001-project-foundation/` |
 
 ## 状态说明
 
@@ -17,6 +17,6 @@
 - `Accepting`：独立验收中；
 - `Rework Required`：需要返工；
 - `Blocked`：被明确条件阻塞；
-- `Accepted`：独立验收通过。
+- `Accepted`：独立验收通过且用户已确认验收完成。
 
 不得仅修改本索引来改变 Spec 状态；状态变化必须同步写入对应 `spec.md`。

@@ -1,7 +1,7 @@
 # SPEC-001 实施计划
 
 - Spec：`specs/spec-001-project-foundation/spec.md`
-- Spec 状态：Blocked
+- Spec 状态：Accepted
 - 计划状态：Completed
 - 更新日期：2026-07-24
 
@@ -88,7 +88,7 @@
 | 数据依赖 | PostgreSQL/Redis 健康、就绪检查成功与失败路径 |
 | E2E | Playwright 首页与健康检查 |
 | Docker | 两个镜像构建、非 root、容器健康 |
-| CI | Workflow 静态检查及 GitHub 完整成功运行 |
+| CI | Workflow 配置和静态检查；远程运行属于提交后反馈，不作为 Spec 验收门禁 |
 | 安全 | 密钥扫描式检查、环境文件和镜像内容检查 |
 | 文档 | 从干净工作区逐步执行 README |
 
@@ -102,7 +102,7 @@
 - 已执行命令、退出结果和耗时较长的检查；
 - 未执行或无法执行的检查及原因；
 - 当前 Git 状态和已有无关改动；
-- CI 远端运行链接或无法运行的阻塞说明；
+- 已执行的 CI 配置检查；远程运行链接如已存在可作为非门禁反馈提供；
 - 任何需要协调开发 Agent 处理的决策问题。
 
 ## 5. 风险控制

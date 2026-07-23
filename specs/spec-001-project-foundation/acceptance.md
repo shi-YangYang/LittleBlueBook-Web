@@ -1,8 +1,8 @@
 # SPEC-001 验收记录
 
 - Spec：`specs/spec-001-project-foundation/spec.md`
-- 当前 Spec 状态：Blocked
-- 验收状态：Blocked
+- 当前 Spec 状态：Accepted
+- 验收状态：Accepted
 - 最新验收轮次：1
 
 本文件只记录独立验收结果，不修改 `spec.md` 中的需求或验收标准。
@@ -13,7 +13,7 @@
 - 实施 Agent 已返回完整实施报告；
 - 验收 Agent 与实施 Agent 相互独立；
 - 工作区改动范围和已知无关改动已经明确；
-- 验收环境具备 Node.js 24、pnpm 11、Docker 和访问 GitHub Actions 结果所需条件。
+- 验收环境具备 Node.js 24、pnpm 11 和 Docker；远程 CI 不属于验收前置条件。
 
 ## 验收检查表
 
@@ -27,9 +27,10 @@
 | AC-006 数据工具 | PASS | Prisma Schema 校验与 Client 生成成功，数据库命令齐全且无业务模型 |
 | AC-007 统一检查 | PASS | 格式、Lint、类型、单元测试、E2E、构建和 Docker 构建全部通过 |
 | AC-008 Docker 镜像 | PASS | 两个 Node.js 24 镜像均以非 root 用户运行，不含 `.env`，健康接口可验证 |
-| AC-009 CI | BLOCKED | CI 静态检查通过，但工作流尚未推送至 GitHub，无法取得远程成功运行记录 |
 | AC-010 文档与敏感信息 | PASS | README 和示例环境文件完整，未发现真实密钥、环境文件、构建产物或本地数据被跟踪 |
 | AC-011 范围 | PASS | 未实现业务模型、业务功能、正式镜像发布或生产部署 |
+
+自 Spec 版本 1.1 起，CI 不再单独设置为验收项。历史 AC-009 及其第一轮 `BLOCKED` 结论保留在下方作为审计记录，但不再影响当前验收结论。
 
 ## 验收轮次
 
@@ -81,6 +82,20 @@
 - 无。
 
 验收 Agent 未修改源代码、配置、测试、Spec、验收记录或治理文件。验收产生的进程和 Compose 容器均已停止，要求保留的命名数据卷仍然存在。
+
+## 最终确认
+
+- 日期：2026-07-24
+- Spec 版本：1.1
+- 当前有效验收项：AC-001 至 AC-008、AC-010、AC-011
+- 有效验收项结果：全部 PASS
+- 用户确认：验收完成
+- 最终结论：PASS
+- Spec 状态：Accepted
+
+用户确认 CI 不再作为单独验收项，Spec 完成状态与 CI 结果无关。因此第一轮中仅由旧版 AC-009 导致的 `BLOCKED` 不再构成当前阻塞。
+
+作为非门禁工程反馈，[GitHub Actions 运行 30041580870](https://github.com/shi-YangYang/LittleBlueBook-Web/actions/runs/30041580870) 已于提交 `1dcecf9` 推送到 `main` 后成功完成，总耗时 2 分 58 秒。运行存在一条关于部分 Action 仍以 Node.js 20 为目标运行时的非阻断警告，未影响本次成功结论。
 
 ## 后续轮次模板
 
