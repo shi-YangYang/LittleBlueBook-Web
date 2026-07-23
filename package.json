@@ -1,0 +1,37 @@
+{
+  "name": "littlebluebook-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "LittleBlueBook Web workspace",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=24.0.0 <25.0.0",
+    "pnpm": ">=11.0.0 <12.0.0"
+  },
+  "scripts": {
+    "postinstall": "pnpm --filter backend db:generate",
+    "dev": "pnpm --filter frontend --filter backend --parallel run dev",
+    "infra:up": "docker compose up -d --wait",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs --follow",
+    "lint": "pnpm --filter frontend --filter backend --filter e2e run lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm --filter frontend --filter backend --filter e2e run typecheck",
+    "test": "pnpm --filter frontend --filter backend run test",
+    "test:e2e": "pnpm --filter e2e run test",
+    "build": "pnpm --filter frontend --filter backend run build",
+    "docker:build": "docker build --file frontend/Dockerfile --tag littlebluebook-frontend:local . && docker build --file backend/Dockerfile --tag littlebluebook-backend:local .",
+    "db:generate": "pnpm --filter backend db:generate",
+    "db:validate": "pnpm --filter backend db:validate",
+    "db:migrate": "pnpm --filter backend db:migrate",
+    "db:deploy": "pnpm --filter backend db:deploy",
+    "db:studio": "pnpm --filter backend db:studio",
+    "ci:validate": "node scripts/validate-ci.mjs"
+  },
+  "devDependencies": {
+    "prettier": "3.9.6",
+    "prettier-plugin-tailwindcss": "0.8.1",
+    "yaml": "2.9.0"
+  }
+}

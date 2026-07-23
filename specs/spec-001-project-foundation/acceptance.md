@@ -1,0 +1,123 @@
+# SPEC-001 验收记录
+
+- Spec：`specs/spec-001-project-foundation/spec.md`
+- 当前 Spec 状态：Blocked
+- 验收状态：Blocked
+- 最新验收轮次：1
+
+本文件只记录独立验收结果，不修改 `spec.md` 中的需求或验收标准。
+
+## 验收前置条件
+
+- 用户已将 Spec 状态确认为 `Confirmed`；
+- 实施 Agent 已返回完整实施报告；
+- 验收 Agent 与实施 Agent 相互独立；
+- 工作区改动范围和已知无关改动已经明确；
+- 验收环境具备 Node.js 24、pnpm 11、Docker 和访问 GitHub Actions 结果所需条件。
+
+## 验收检查表
+
+| 验收项 | 结果 | 证据 |
+| --- | --- | --- |
+| AC-001 干净安装 | PASS | Node.js 24.14.0、pnpm 11.9.0 的干净临时副本中冻结安装成功，并生成 Prisma Client |
+| AC-002 本地基础设施 | PASS | PostgreSQL 18、Redis 8 健康；停止和重启后命名卷保持不变 |
+| AC-003 本地启动 | PASS | 前端和后端健康接口均返回 200，首页和 OpenAPI 可访问，日志未泄露连接串 |
+| AC-004 前端行为 | PASS | 首页文案、`/healthz` 响应、Vitest 和生产构建均通过 |
+| AC-005 后端行为 | PASS | 正常依赖返回 200，任一依赖不可用时就绪检查返回 503，OpenAPI 和生产构建通过 |
+| AC-006 数据工具 | PASS | Prisma Schema 校验与 Client 生成成功，数据库命令齐全且无业务模型 |
+| AC-007 统一检查 | PASS | 格式、Lint、类型、单元测试、E2E、构建和 Docker 构建全部通过 |
+| AC-008 Docker 镜像 | PASS | 两个 Node.js 24 镜像均以非 root 用户运行，不含 `.env`，健康接口可验证 |
+| AC-009 CI | BLOCKED | CI 静态检查通过，但工作流尚未推送至 GitHub，无法取得远程成功运行记录 |
+| AC-010 文档与敏感信息 | PASS | README 和示例环境文件完整，未发现真实密钥、环境文件、构建产物或本地数据被跟踪 |
+| AC-011 范围 | PASS | 未实现业务模型、业务功能、正式镜像发布或生产部署 |
+
+## 验收轮次
+
+每轮验收应追加记录，不覆盖历史结果。
+
+## 第 1 轮验收
+
+- 日期：2026-07-24
+- 验收 Agent：`accept_spec_001_round_1`
+- 实施轮次：1
+- 结论：BLOCKED
+
+### 自动化检查
+
+| 命令 | 结果 | 说明 |
+| --- | --- | --- |
+| 干净副本 `pnpm install --frozen-lockfile` | PASS | 安装成功并生成 Prisma Client |
+| `pnpm format:check` | PASS | Prettier 检查通过 |
+| `pnpm lint` | PASS | frontend、backend、e2e 全部通过 |
+| `pnpm typecheck` | PASS | 三个 Workspace 全部通过严格类型检查 |
+| `pnpm db:validate` | PASS | Prisma Schema 有效 |
+| `pnpm db:generate` | PASS | Prisma Client 生成成功 |
+| `pnpm test` | PASS | Vitest 2/2，Jest 9/9 |
+| `pnpm test:e2e` | PASS | Playwright Chromium 2/2 |
+| `pnpm build` | PASS | Next.js 与 NestJS 构建成功 |
+| `pnpm docker:build` | PASS | 两个生产镜像构建成功 |
+| `pnpm ci:validate` | PASS | CI 静态验证成功 |
+| `docker compose config --quiet` | PASS | Compose 配置有效 |
+| `git diff --check` | PASS | 无空白错误 |
+| GitHub Actions 远端运行 | BLOCKED | 远端尚无本次 CI 工作流，无法提供成功运行记录 |
+
+### 验收标准
+
+- AC-001 至 AC-008、AC-010、AC-011：PASS。
+- AC-009：BLOCKED。PR 和 `main` 触发、只读权限、并发取消、PostgreSQL 18、Redis 8、Node.js 24、冻结安装、全部检查和失败报告的静态验证均通过；外部 Action 均固定到 40 位 Commit SHA，且没有推送镜像、SSH、部署或手动发布入口。
+
+### 失败项
+
+- 无实现失败项。
+
+### 阻塞项
+
+- 受影响标准：AC-009。
+- 阻塞原因：当前实现和 `.github/workflows/ci.yml` 尚未提交并推送；`origin/main` 不包含该工作流，且验收 Agent 没有提交、推送或创建 Pull Request 的授权，因此无法产生或核验 GitHub Actions 的完整成功运行记录。
+- 解除条件：由有权限者提交并推送当前实现，通过 Pull Request 或更新 `main` 触发 CI，提供一次覆盖完整 Job 的成功运行链接；随后创建新的独立验收 Agent，仅复验 AC-009。
+
+### 非阻断建议
+
+- 无。
+
+验收 Agent 未修改源代码、配置、测试、Spec、验收记录或治理文件。验收产生的进程和 Compose 容器均已停止，要求保留的命名数据卷仍然存在。
+
+## 后续轮次模板
+
+```text
+## 第 N 轮验收
+
+- 日期：
+- 验收 Agent：
+- 实施轮次：
+- 结论：PASS / FAIL / BLOCKED
+
+### 自动化检查
+
+| 命令 | 结果 | 说明 |
+| --- | --- | --- |
+
+### 验收标准
+
+| 验收项 | 结果 | 证据 |
+| --- | --- | --- |
+
+### 失败项
+
+- 对应标准：
+- 复现步骤：
+- 期望结果：
+- 实际结果：
+- 影响范围：
+- 返工边界：
+
+### 阻塞项
+
+- 受影响标准：
+- 阻塞原因：
+- 解除条件：
+
+### 非阻断建议
+
+-
+```

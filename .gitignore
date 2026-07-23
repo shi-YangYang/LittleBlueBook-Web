@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+frontend/.env*
+!frontend/.env.example
+backend/.env*
+!backend/.env.example
+
+# Build output
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Test output
+playwright-report/
+test-results/
+blob-report/
+/test/
+
+# Generated clients
+backend/src/generated/
+
+# Local runtime data
+.data/
+data/
+media/
+uploads/
+
+# Tool and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+pnpm-debug.log*

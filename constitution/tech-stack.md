@@ -17,12 +17,13 @@
 
 | 领域 | 状态 | 需要确认的内容 |
 | --- | --- | --- |
-| 前端 | 待确认 | 框架、语言、构建工具、状态管理、UI 方案 |
-| 后端 | 待确认 | 语言、框架、API 风格、模块边界 |
-| 数据 | 待确认 | 数据库、缓存、搜索能力 |
+| 工程基础 | 已确认 | Node.js 24（确认时为 Active LTS）、pnpm 11 Workspace、TypeScript；前后端保留独立目录 |
+| 前端 | 已确认基础栈 | Next.js 16 App Router、React 19、TypeScript、Tailwind CSS 4；状态管理和业务 UI 组件方案待具体功能确认 |
+| 后端 | 已确认基础栈 | NestJS 11、TypeScript、REST、OpenAPI、模块化单体；具体业务模块边界待相关 Spec 确认 |
+| 数据 | 部分确认 | PostgreSQL 18、Prisma ORM 7、Redis 8；搜索能力待确认 |
 | 媒体存储 | 已确认初期方案 | 本地持久化存储；通过可替换的存储抽象隔离业务代码；未来按需要迁移至 S3 兼容对象存储和 CDN |
 | 身份与权限 | 待确认 | 认证方式、授权模型、会话策略 |
-| 测试 | 待确认 | 单元、集成、端到端测试工具及覆盖要求 |
+| 测试 | 已确认基础栈 | 前端 Vitest 4，后端 Jest 30，端到端 Playwright 1；业务覆盖要求由具体 Spec 确认 |
 | 部署 | 已确认基线 | GitHub + GitHub Actions + GHCR + Docker Compose；初期部署到单台境外云服务器；通过 `workflow_dispatch` 人工确认生产发布 |
 | 可观测性 | 待确认 | 日志、指标、追踪、告警 |
 | 安全与合规 | 待确认 | 数据分级、隐私要求、依赖治理、审计 |
@@ -37,6 +38,19 @@
 - 使用 Docker 部署时，媒体目录必须挂载到宿主机目录或 Docker Volume，不得只保存在容器可写层；
 - 初期可由 Nginx 等静态文件服务提供媒体访问，不把 CDN 作为当前依赖；
 - 当单机磁盘、带宽、可靠性或水平扩展成为瓶颈时，再迁移到 S3 兼容对象存储和 CDN。
+
+## 已确认的应用工程基础
+
+- 仓库使用 pnpm Workspace 管理 `frontend/` 和 `backend/`；
+- 当前不引入 Turborepo、Nx 等额外任务编排层，只有出现明确需求时再评估；
+- 前端使用 Next.js App Router、React、TypeScript 和 Tailwind CSS；
+- 后端使用 NestJS 构建模块化单体，通过 REST API 对外提供能力，并生成 OpenAPI 文档；
+- 主数据库使用 PostgreSQL，通过 Prisma ORM 进行类型安全访问和版本化迁移；
+- Redis 作为后续缓存、任务或实时能力的基础依赖，但具体用途必须由业务 Spec 决定；
+- 本地开发时，前端和后端由本机 Node.js/pnpm 运行，PostgreSQL 和 Redis 由 Docker Compose 运行；
+- 生产环境仍采用前后端 Docker 镜像和 Docker Compose；
+- 前端单元测试使用 Vitest，后端单元与集成测试使用 Jest，浏览器端到端测试使用 Playwright；
+- 依赖的精确版本由锁文件固定；升级 Major 版本前必须重新评估兼容性。
 
 ## 已确认的初期部署目标
 
