@@ -29,6 +29,15 @@ describe('backend application', () => {
 
     expect(response.body.info.title).toBe('LittleBlueBook API');
     expect(response.body.paths).toHaveProperty('/health/live');
+    expect(response.body.paths).toHaveProperty(
+      '/api/v1/auth/email-code/request',
+    );
+    expect(response.body.paths).toHaveProperty(
+      '/api/v1/auth/email-code/verify',
+    );
+    expect(response.body.paths).toHaveProperty(
+      '/api/v1/auth/registration/complete',
+    );
   });
 
   it('does not create business routes in the API namespace', async () => {

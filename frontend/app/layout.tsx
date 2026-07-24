@@ -4,7 +4,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: '小蓝书',
-  description: '小蓝书 Web 工程基础',
+  description: '小蓝书，发现更懂你的男性兴趣社区',
 };
 
 export default function RootLayout({

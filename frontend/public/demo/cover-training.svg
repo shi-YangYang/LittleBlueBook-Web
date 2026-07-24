@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 650" role="img" aria-label="原创力量训练插画">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffedd5"/><stop offset="1" stop-color="#fed7aa"/></linearGradient></defs>
+  <rect width="480" height="650" fill="url(#bg)"/>
+  <circle cx="240" cy="184" r="62" fill="#f59e0b"/>
+  <path d="M165 290c24-48 126-48 150 0l37 230H128z" fill="#1e293b"/>
+  <rect x="42" y="280" width="396" height="22" rx="11" fill="#334155"/>
+  <rect x="26" y="240" width="44" height="104" rx="12" fill="#0f172a"/>
+  <rect x="410" y="240" width="44" height="104" rx="12" fill="#0f172a"/>
+  <rect x="9" y="258" width="24" height="68" rx="8" fill="#475569"/>
+  <rect x="447" y="258" width="24" height="68" rx="8" fill="#475569"/>
+  <path d="M166 324 82 290M314 324l84-34" fill="none" stroke="#f59e0b" stroke-width="30" stroke-linecap="round"/>
+</svg>

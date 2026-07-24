@@ -5,16 +5,60 @@ const booleanFromString = z
   .default('true')
   .transform((value) => value === 'true');
 
-const environmentSchema = z.object({
-  NODE_ENV: z
-    .enum(['development', 'test', 'production'])
-    .default('development'),
-  PORT: z.coerce.number().int().min(1).max(65535).default(3001),
-  DATABASE_URL: z.string().min(1),
-  REDIS_URL: z.string().min(1),
-  FRONTEND_ORIGIN: z.url(),
-  SWAGGER_ENABLED: booleanFromString,
-});
+const falseByDefaultBoolean = z
+  .enum(['true', 'false'])
+  .default('false')
+  .transform((value) => value === 'true');
+
+const environmentSchema = z
+  .object({
+    NODE_ENV: z
+      .enum(['development', 'test', 'production'])
+      .default('development'),
+    PORT: z.coerce.number().int().min(1).max(65535).default(3001),
+    DATABASE_URL: z.string().min(1),
+    REDIS_URL: z.string().min(1),
+    FRONTEND_ORIGIN: z.url(),
+    SWAGGER_ENABLED: booleanFromString,
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
+    COOKIE_SECURE: falseByDefaultBoolean,
+    AUTH_CODE_HASH_SECRET: z.string().min(32),
+    SMTP_HOST: z.string().min(1).default('smtp.163.com'),
+    SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(465),
+    SMTP_SECURE: booleanFromString,
+    SMTP_FROM_ADDRESS: z.email(),
+    SMTP_USERNAME: z.string().min(1),
+    SMTP_AUTH_CODE: z.string().min(1),
+    SMTP_FROM_NAME: z.string().min(1).default('小蓝书'),
+    MAIL_TRANSPORT: z.enum(['smtp', 'memory']).default('smtp'),
+    E2E_TEST_CODE: z
+      .string()
+      .regex(/^\d{6}$/)
+      .optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.NODE_ENV === 'production' && !value.COOKIE_SECURE) {
+      context.addIssue({
+        code: 'custom',
+        path: ['COOKIE_SECURE'],
+        message: 'must be true in production',
+      });
+    }
+    if (value.MAIL_TRANSPORT === 'memory' && value.NODE_ENV !== 'test') {
+      context.addIssue({
+        code: 'custom',
+        path: ['MAIL_TRANSPORT'],
+        message: 'memory transport is allowed only in test',
+      });
+    }
+    if (value.MAIL_TRANSPORT === 'memory' && !value.E2E_TEST_CODE) {
+      context.addIssue({
+        code: 'custom',
+        path: ['E2E_TEST_CODE'],
+        message: 'is required for memory transport',
+      });
+    }
+  });
 
 export type AppEnvironment = z.infer<typeof environmentSchema>;
 

@@ -7,6 +7,7 @@
 | ID | 名称 | 状态 | 目录 |
 | --- | --- | --- | --- |
 | SPEC-001 | 项目工程基础 | Accepted | `spec-001-project-foundation/` |
+| SPEC-002 | 邮箱注册与登录 | Accepted | `spec-002-email-authentication/` |
 
 ## 状态说明
 

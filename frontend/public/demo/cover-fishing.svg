@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 700" role="img" aria-label="原创夜钓插画">
+  <defs><linearGradient id="night" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#0f172a"/><stop offset="1" stop-color="#1e3a8a"/></linearGradient></defs>
+  <rect width="480" height="700" fill="url(#night)"/>
+  <circle cx="372" cy="115" r="55" fill="#f8fafc" opacity=".88"/>
+  <g fill="#fff" opacity=".7"><circle cx="78" cy="83" r="3"/><circle cx="173" cy="128" r="4"/><circle cx="282" cy="64" r="3"/><circle cx="423" cy="216" r="4"/></g>
+  <path d="M0 453c103-38 185 32 272 0 87-32 140-25 208 5v242H0z" fill="#075985"/>
+  <path d="M210 315c83-80 155-87 222-56" fill="none" stroke="#cbd5e1" stroke-width="5"/>
+  <path d="M214 316 175 554" stroke="#92400e" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="197" cy="344" r="32" fill="#f59e0b"/>
+  <path d="m141 492 58-119 56 119z" fill="#334155"/>
+  <ellipse cx="350" cy="574" rx="64" ry="22" fill="#38bdf8" opacity=".5"/>
+</svg>

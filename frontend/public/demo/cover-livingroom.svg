@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 660" role="img" aria-label="原创客厅灯光插画">
+  <defs><linearGradient id="wall" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#e0e7ff"/><stop offset="1" stop-color="#f5f3ff"/></linearGradient></defs>
+  <rect width="480" height="660" fill="url(#wall)"/>
+  <rect x="0" y="490" width="480" height="170" fill="#7c2d12"/>
+  <rect x="67" y="345" width="346" height="166" rx="38" fill="#4338ca"/>
+  <rect x="93" y="321" width="128" height="87" rx="24" fill="#818cf8"/>
+  <rect x="259" y="321" width="128" height="87" rx="24" fill="#818cf8"/>
+  <rect x="219" y="105" width="10" height="195" fill="#334155"/>
+  <path d="m156 161 68-85 68 85z" fill="#f59e0b"/>
+  <ellipse cx="224" cy="169" rx="91" ry="34" fill="#fbbf24"/>
+  <circle cx="224" cy="177" r="16" fill="#fff7ed"/>
+  <rect x="338" y="226" width="16" height="122" rx="8" fill="#166534"/>
+  <circle cx="346" cy="213" r="54" fill="#22c55e"/>
+</svg>

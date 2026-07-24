@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 620" role="img" aria-label="原创公路骑行插画">
+  <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#bae6fd"/><stop offset="1" stop-color="#e0f2fe"/></linearGradient></defs>
+  <rect width="480" height="620" fill="url(#sky)"/>
+  <path d="M0 315 95 221l75 69 95-142 215 219v253H0z" fill="#16a34a"/>
+  <path d="m189 620 38-273h52l41 273z" fill="#64748b"/>
+  <path d="m238 620 12-273" stroke="#f8fafc" stroke-width="8" stroke-dasharray="28 25"/>
+  <g fill="none" stroke="#172554" stroke-width="10"><circle cx="142" cy="445" r="72"/><circle cx="342" cy="445" r="72"/><path d="m142 445 70-117 60 117zm70-117 130 117M196 328h67"/></g>
+  <circle cx="253" cy="273" r="35" fill="#f59e0b"/>
+  <path d="m220 311 43-23 52 75" fill="none" stroke="#1677ff" stroke-width="25" stroke-linecap="round"/>
+</svg>
