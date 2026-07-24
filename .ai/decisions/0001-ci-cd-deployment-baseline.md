@@ -2,6 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-07-24
+- 更新日期：2026-07-24
 - 决策人：用户
 - 记录人：协调开发 Agent
 - 关联：`constitution/tech-stack.md`
@@ -43,7 +44,11 @@ LittleBlueBook-Web 后续需要持续集成和持续交付。初期生产环境�
 - 初期生产环境为一台境外云服务器；
 - 生产容器使用 Docker Compose 管理；
 - 生产发布由 `workflow_dispatch` 人工触发；
-- 日常开发提交只执行 CI，不要求逐个发布正式生产镜像；
+- 日常开发使用 `dev` 分支；
+- `ci.yml` 只使用 `workflow_dispatch` 手动触发，不响应任何分支的 `push` 或 `pull_request`；
+- 手动运行 CI 时选择 `dev` 分支，CI 通过后再由用户将 `dev` 合并到 `main`；
+- 文档或其他文件的普通推送不会自动消耗 CI 资源；
+- CI 不作为 Spec 完成门禁，不要求逐个提交生成或部署正式生产镜像；
 - 正式发布以选定 `main` 提交上的 `vMAJOR.MINOR.PATCH` Git Tag 触发；
 - 正式镜像同时使用发布版本和 Git Commit SHA 进行不可变追踪，不以 `latest` 作为唯一版本；
 - CI、正式镜像发布和生产部署分别由 `ci.yml`、`release-images.yml` 和 `deploy-production.yml` 承担；
@@ -63,7 +68,7 @@ LittleBlueBook-Web 后续需要持续集成和持续交付。初期生产环境�
 ## 影响
 
 - 仓库后续需要建立 CI、镜像构建和人工部署工作流；
-- 创建正式版本标签前，需要确认对应提交位于 `main` 且已经通过强制 CI；
+- 创建正式版本标签前，需要确认对应代码已经通过 `dev` 上的手动 CI 并合并到 `main`；发布流水线仍需重新执行发布所需的强制检查；
 - 云服务器需要安装 Docker Engine 和 Docker Compose；
 - 云服务器需要安全地获取私有镜像，并使用受限部署凭据；
 - 生产配置和密钥不得写入镜像或提交到仓库；

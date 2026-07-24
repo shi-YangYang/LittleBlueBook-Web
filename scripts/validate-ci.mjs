@@ -10,12 +10,20 @@ const fail = (message) => {
   throw new Error(`Invalid CI workflow: ${message}`);
 };
 
+const triggers =
+  workflow.on && typeof workflow.on === 'object'
+    ? Object.keys(workflow.on)
+    : [];
+
 if (
-  !workflow.on ||
-  !Object.hasOwn(workflow.on, 'pull_request') ||
-  !workflow.on.push?.branches?.includes('main')
+  triggers.length !== 1 ||
+  triggers[0] !== 'workflow_dispatch' ||
+  Object.hasOwn(workflow.on, 'push') ||
+  Object.hasOwn(workflow.on, 'pull_request')
 ) {
-  fail('Pull Request and main push triggers are required');
+  fail(
+    'workflow_dispatch must be the only trigger; push and pull_request are forbidden',
+  );
 }
 
 if (workflow.permissions?.contents !== 'read') {
@@ -47,7 +55,7 @@ for (const match of workflowText.matchAll(/uses:\s*([^@\s]+)@([^\s#]+)/g)) {
   }
 }
 
-if (/docker\s+(push|login)|workflow_dispatch|ssh/i.test(workflowText)) {
+if (/docker\s+(push|login)|\bssh\b/i.test(workflowText)) {
   fail('CI must not publish images, deploy, or connect to production');
 }
 

@@ -86,7 +86,7 @@
 ## 最终确认
 
 - 日期：2026-07-24
-- Spec 版本：1.1
+- Spec 版本：1.2
 - 当前有效验收项：AC-001 至 AC-008、AC-010、AC-011
 - 有效验收项结果：全部 PASS
 - 用户确认：验收完成
@@ -96,6 +96,25 @@
 用户确认 CI 不再作为单独验收项，Spec 完成状态与 CI 结果无关。因此第一轮中仅由旧版 AC-009 导致的 `BLOCKED` 不再构成当前阻塞。
 
 作为非门禁工程反馈，[GitHub Actions 运行 30041580870](https://github.com/shi-YangYang/LittleBlueBook-Web/actions/runs/30041580870) 已于提交 `1dcecf9` 推送到 `main` 后成功完成，总耗时 2 分 58 秒。运行存在一条关于部分 Action 仍以 Node.js 20 为目标运行时的非阻断警告，未影响本次成功结论。
+
+版本 1.2 将 CI 改为只通过 `workflow_dispatch` 手动选择 `dev` 运行，并移除 `push` 与 `pull_request` 自动触发。该变化不新增验收项，也不改变本 Spec 的 `Accepted` 状态。
+
+## 版本 1.2 CI 配置变更验收
+
+- 日期：2026-07-24
+- 实施 Agent：`implement_manual_dev_ci`
+- 验收 Agent：`accept_manual_dev_ci`
+- 结论：PASS
+
+独立验收确认：
+
+- `.github/workflows/ci.yml` 的唯一触发器为 `workflow_dispatch`，不存在 `push` 或 `pull_request`；
+- 原有只读权限、并发取消、PostgreSQL 18、Redis 8、Node.js 24、冻结安装、格式、Lint、类型、Prisma、测试、E2E、构建、Docker 构建和失败报告均保留；
+- 所有外部 Action 仍固定到 40 位 Commit SHA，且不存在镜像推送、登录、SSH 或部署操作；
+- `scripts/validate-ci.mjs` 会要求唯一的手动触发器并拒绝自动触发配置；
+- README 已说明工作流必须先存在于默认分支 `main`，之后才能从 GitHub Actions 页面手动选择 `dev` 运行；
+- `pnpm ci:validate`、改动文件格式检查、`pnpm lint` 和 `git diff --check` 均通过；
+- 未创建临时测试副本，未执行暂存、提交、推送或其他远程操作。
 
 ## 后续轮次模板
 
