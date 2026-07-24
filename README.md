@@ -102,6 +102,24 @@ pnpm docker:build
 
 `pnpm test:e2e` 会确定性等待前后端健康后再执行浏览器测试。CI 在全新的 Linux 环境中执行同类检查，并额外验证工作流本身；CI 不发布镜像，也不连接生产服务器。
 
+## 手动运行 CI
+
+CI 只接受 GitHub Actions 的手动触发。普通的 `push` 和 Pull Request 都不会自动运行 CI，因此只修改文档并推送时不会消耗一次 CI 运行。
+
+GitHub 要求支持 `workflow_dispatch` 的工作流文件已经存在于仓库默认分支，才会在 Actions 页面提供 **Run workflow** 按钮。首次启用时，需要先将包含 `.github/workflows/ci.yml` 的这次变更合并或提交到默认分支 `main`；如果该文件只存在于 `dev`，GitHub 页面可能不会显示手动运行入口。这是一次性的启用步骤，后续日常开发仍在 `dev` 进行。
+
+启用后，按以下步骤验证 `dev`：
+
+1. 将待验证代码推送到 `dev`。
+2. 打开 GitHub 仓库的 **Actions** 页面。
+3. 在左侧选择 **CI** 工作流。
+4. 点击 **Run workflow**。
+5. 在 **Use workflow from** 中选择 `dev`。
+6. 再次点击 **Run workflow** 并等待运行完成。
+7. CI 通过后，再由用户将 `dev` 合并到 `main`。
+
+手动运行会检查所选分支当时的代码和工作流版本。CI 是提交后的反馈机制，不属于 Spec 验收项，也不会改变已经确认完成的 Spec 状态。
+
 ## Prisma 开发迁移
 
 Prisma Schema 位于 `backend/prisma/schema.prisma`。当前工程基础没有业务模型，也没有虚构业务表。
