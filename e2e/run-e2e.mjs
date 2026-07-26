@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const e2eRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(e2eRoot, '..');
-const composeProject = 'littlebluebook-spec002-e2e';
+const composeProject = 'littlebluebook-spec003-e2e';
 const dockerCommand = process.platform === 'win32' ? 'docker.exe' : 'docker';
 const pnpmCli = process.env.npm_execpath;
 const pnpmCommand = pnpmCli
@@ -68,6 +68,7 @@ let backendProcess;
 let frontendProcess;
 let infrastructureStarted = false;
 let cleaningUp = false;
+let frontendGeneratedFileSnapshots;
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -176,33 +177,38 @@ async function seedUsersAndSessions() {
       '00000000-0000-4000-8000-000000000101',
       'existing-chromium@example.com',
       '铬蓝用户',
+      '0000000101',
     ],
     [
       '00000000-0000-4000-8000-000000000102',
       'existing-firefox@example.com',
       '火狐蓝友',
+      '0000000102',
     ],
     [
       '00000000-0000-4000-8000-000000000103',
       'existing-webkit@example.com',
       '织网蓝友',
+      '0000000103',
     ],
     [
       '00000000-0000-4000-8000-000000000104',
       'multi-device@example.com',
       '多端蓝友',
+      '0000000104',
     ],
   ];
   const values = users
     .map(
-      ([id, email, nickname]) =>
-        `('${id}', '${email}', '${nickname}', ` +
-        'CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+      ([id, email, nickname, littleBlueBookId]) =>
+        `('${id}', '${email}', '${nickname}', '${littleBlueBookId}', ` +
+        "'PRIVATE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
     )
     .join(', ');
   const sql =
     'INSERT INTO "users" ' +
-    '("id", "email", "nickname", "createdAt", "updatedAt", "lastLoginAt") ' +
+    '("id", "email", "nickname", "littleBlueBookId", "gender", ' +
+    '"createdAt", "updatedAt", "lastLoginAt") ' +
     `VALUES ${values} ON CONFLICT ("email") DO NOTHING;`;
 
   await run(
@@ -225,7 +231,12 @@ async function seedUsersAndSessions() {
   );
 
   const multiDeviceUserId = users[3][0];
-  const sessions = ['spec002-device-a-session', 'spec002-device-b-session'];
+  const sessions = [
+    'spec002-device-a-session',
+    'spec002-device-b-session',
+    'spec003-profile-session',
+    'spec003-logout-session',
+  ];
   for (const sessionId of sessions) {
     const key =
       'auth:session:' + createHash('sha256').update(sessionId).digest('hex');
@@ -251,6 +262,93 @@ async function seedUsersAndSessions() {
   }
 }
 
+async function verifyLegacyUserMigration() {
+  const migrationDatabase = 'littlebluebook_profile_migration_e2e';
+  const baselineSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260724000100_add_users',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const profileSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260726000100_add_user_profiles',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const psql = (...args) =>
+    run(
+      dockerCommand,
+      composeArgs(
+        'exec',
+        '-T',
+        'postgres',
+        'psql',
+        '-U',
+        databaseUser,
+        ...args,
+      ),
+      { env: composeEnvironment, stdio: 'ignore' },
+    );
+
+  await psql('-d', databaseName, '-c', `CREATE DATABASE ${migrationDatabase};`);
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    baselineSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    `INSERT INTO "users" ` +
+      '("id", "email", "nickname", "createdAt", "updatedAt", "lastLoginAt") ' +
+      "VALUES ('00000000-0000-4000-8000-000000000099', " +
+      "'legacy@example.com', '旧蓝友', CURRENT_TIMESTAMP, " +
+      'CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);',
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    profileSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    `DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM "users"
+        WHERE "email" = 'legacy@example.com'
+          AND "littleBlueBookId" ~ '^[0-9]{10}$'
+          AND "gender" = 'PRIVATE'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-003 legacy profile backfill failed';
+      END IF;
+    END $$;`,
+  );
+}
+
 function findSystemChromium() {
   if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
     return process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
@@ -261,11 +359,14 @@ function findSystemChromium() {
   const candidates = [
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
   ];
   return candidates.find((candidate) => existsSync(candidate));
 }
 
 async function availableBrowserFamilies(systemChromiumPath) {
+  process.env.PLAYWRIGHT_BROWSERS_PATH ??= '0';
   const { chromium, firefox, webkit } = await import('@playwright/test');
   const availability = {
     chromium:
@@ -301,6 +402,13 @@ async function cleanup() {
   await stop(frontendProcess);
   await stop(backendProcess);
 
+  if (frontendGeneratedFileSnapshots) {
+    for (const [filePath, contents] of frontendGeneratedFileSnapshots) {
+      writeFileSync(filePath, contents);
+    }
+    frontendGeneratedFileSnapshots = undefined;
+  }
+
   if (infrastructureStarted) {
     await run(
       dockerCommand,
@@ -327,6 +435,7 @@ async function main() {
     { env: composeEnvironment },
   );
 
+  await verifyLegacyUserMigration();
   await runPnpm(['--filter', 'backend', 'db:deploy'], {
     env: applicationEnvironment,
   });
@@ -338,6 +447,10 @@ async function main() {
   );
   await waitFor(`http://127.0.0.1:${backendPort}/health/ready`);
 
+  frontendGeneratedFileSnapshots = [
+    path.join(repoRoot, 'frontend', 'next-env.d.ts'),
+    path.join(repoRoot, 'frontend', 'tsconfig.json'),
+  ].map((filePath) => [filePath, readFileSync(filePath)]);
   frontendProcess = startPnpm(
     [
       '--filter',
@@ -353,6 +466,7 @@ async function main() {
     {
       ...process.env,
       NEXT_PUBLIC_API_URL: apiUrl,
+      NEXT_DIST_DIR: '.next-e2e',
     },
   );
   await waitFor(`${frontendUrl}/healthz`);
@@ -368,6 +482,7 @@ async function main() {
       ...applicationEnvironment,
       E2E_FRONTEND_URL: frontendUrl,
       E2E_API_URL: apiUrl,
+      PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH ?? '0',
       ...(chromiumPath
         ? { PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: chromiumPath }
         : {}),

@@ -38,6 +38,7 @@ describe('backend application', () => {
     expect(response.body.paths).toHaveProperty(
       '/api/v1/auth/registration/complete',
     );
+    expect(response.body.paths).toHaveProperty('/api/v1/profile/me');
   });
 
   it('does not create business routes in the API namespace', async () => {

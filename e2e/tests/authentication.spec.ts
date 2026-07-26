@@ -53,8 +53,8 @@ async function submitCode(page: Page): Promise<void> {
   await page.getByRole('button', { name: '登录/注册' }).click();
 }
 
-async function expectIdentity(page: Page, nickname: string): Promise<void> {
-  await expect(page.getByRole('button', { name: nickname })).toBeVisible();
+async function expectIdentity(page: Page): Promise<void> {
+  await expect(page.getByRole('link', { name: '我' })).toBeVisible();
 }
 
 async function addSessionCookie(
@@ -87,14 +87,29 @@ test.describe('core passwordless flows in every browser engine', () => {
     const user = existingUsers[browserFamily(testInfo.project.name)];
     expect(user).toBeDefined();
 
+    const sessionResponse = page.waitForResponse(
+      (response) =>
+        response.url() === `${apiUrl}/auth/session` &&
+        response.request().method() === 'GET',
+    );
     await page.goto('/');
+    expect((await sessionResponse).ok()).toBe(true);
     await openLogin(page);
     await requestCode(page, user!.email);
     await submitCode(page);
-    await expectIdentity(page, user!.nickname);
+    await expectIdentity(page);
+
+    await page.getByRole('link', { name: '我' }).click();
+    await expect(page).toHaveURL(/\/profile$/);
+    await expect(
+      page.getByRole('heading', { name: user!.nickname }),
+    ).toBeVisible();
 
     await page.reload();
-    await expectIdentity(page, user!.nickname);
+    await expectIdentity(page);
+    await expect(
+      page.getByRole('heading', { name: user!.nickname }),
+    ).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 
@@ -104,7 +119,13 @@ test.describe('core passwordless flows in every browser engine', () => {
     const email = uniqueEmail('new-account', testInfo.project.name);
     const nickname = `蓝友${browserFamily(testInfo.project.name)}`;
 
+    const registrationSessionResponse = page.waitForResponse(
+      (response) =>
+        response.url() === `${apiUrl}/auth/session` &&
+        response.request().method() === 'GET',
+    );
     await page.goto('/');
+    expect((await registrationSessionResponse).ok()).toBe(true);
     await openLogin(page);
     await requestCode(page, email);
     await submitCode(page);
@@ -118,10 +139,10 @@ test.describe('core passwordless flows in every browser engine', () => {
 
     await page.getByLabel('昵称').fill(nickname);
     await page.getByRole('button', { name: '完成注册' }).click();
-    await expectIdentity(page, nickname);
+    await expectIdentity(page);
 
     await page.reload();
-    await expectIdentity(page, nickname);
+    await expectIdentity(page);
   });
 
   test('enforces terms and email validation and reports remaining attempts', async ({
@@ -205,7 +226,13 @@ test.describe('registration recovery and multi-device sessions', () => {
       },
     ]);
 
+    const expiredSessionResponse = page.waitForResponse(
+      (response) =>
+        response.url() === `${apiUrl}/auth/session` &&
+        response.request().method() === 'GET',
+    );
     await page.goto('/');
+    expect((await expiredSessionResponse).ok()).toBe(true);
     await openLogin(page);
     await expect(page.locator('.form-error')).toHaveText(
       '验证状态已失效，请重新获取验证码',
@@ -225,17 +252,19 @@ test.describe('registration recovery and multi-device sessions', () => {
       const pageB = await deviceB.newPage();
 
       await Promise.all([pageA.goto('/'), pageB.goto('/')]);
-      await expectIdentity(pageA, '多端蓝友');
-      await expectIdentity(pageB, '多端蓝友');
+      await expectIdentity(pageA);
+      await expectIdentity(pageB);
 
-      await pageA.getByRole('button', { name: '多端蓝友' }).click();
+      await pageA.getByRole('link', { name: '我' }).click();
+      await expect(pageA).toHaveURL(/\/profile$/);
+      await pageA.getByRole('button', { name: '个人主页设置' }).click();
       await pageA.getByRole('menuitem', { name: '退出登录' }).click();
       await expect(
         pageA.getByRole('button', { name: '登录', exact: true }),
       ).toBeVisible();
 
       await pageB.reload();
-      await expectIdentity(pageB, '多端蓝友');
+      await expectIdentity(pageB);
     } finally {
       await deviceA.close();
       await deviceB.close();

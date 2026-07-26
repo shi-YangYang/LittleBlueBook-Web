@@ -9,13 +9,21 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  PRIVATE
+}
+
 model User {
-  id          String   @id @default(uuid()) @db.Uuid
-  email       String   @unique @db.VarChar(320)
-  nickname    String   @db.VarChar(20)
-  createdAt   DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
-  lastLoginAt DateTime @default(now()) @db.Timestamptz(3)
+  id               String   @id @default(uuid()) @db.Uuid
+  email            String   @unique @db.VarChar(320)
+  nickname         String   @db.VarChar(20)
+  littleBlueBookId String   @unique @db.VarChar(10)
+  gender           Gender   @default(PRIVATE)
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+  lastLoginAt      DateTime @default(now()) @db.Timestamptz(3)
 
   @@map("users")
 }

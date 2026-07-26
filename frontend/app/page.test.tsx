@@ -32,6 +32,7 @@ function guestSession() {
 
 describe('Home', () => {
   beforeEach(() => {
+    window.history.replaceState(null, '', '/');
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => guestSession()) as unknown as typeof fetch,
@@ -149,7 +150,7 @@ describe('Home', () => {
     });
   });
 
-  it('logs an existing user in and logs only the current browser out', async () => {
+  it('shows the fixed profile link after an existing user logs in', async () => {
     const user = {
       id: 'user-1',
       email: 'user@example.com',
@@ -161,7 +162,6 @@ describe('Home', () => {
       if (url.endsWith('/auth/email-code/verify')) {
         return response({ status: 'authenticated', user });
       }
-      if (url.endsWith('/auth/logout')) return response({ success: true });
       throw new Error(`Unexpected URL: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
@@ -181,20 +181,13 @@ describe('Home', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
     );
-    const identity = screen.getByRole('button', { name: /蓝海/ });
-    expect(identity).toHaveTextContent('蓝海');
+    const identity = screen.getByRole('link', { name: '我' });
+    expect(identity).toHaveTextContent('我');
     expect(identity).toHaveTextContent('蓝');
-
-    fireEvent.click(identity);
-    fireEvent.click(screen.getByRole('menuitem', { name: '退出登录' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: '登录' })).toBeInTheDocument(),
-    );
+    expect(identity).toHaveAttribute('href', '/profile');
     expect(
-      fetchMock.mock.calls.some(([url]) =>
-        String(url).endsWith('/auth/logout'),
-      ),
-    ).toBe(true);
+      screen.queryByRole('menuitem', { name: '退出登录' }),
+    ).not.toBeInTheDocument();
   });
 
   it('keeps a completed login when the initial guest session resolves late', async () => {
@@ -229,18 +222,14 @@ describe('Home', () => {
     fireEvent.click(screen.getByLabelText('同意用户协议与隐私政策'));
     fireEvent.click(screen.getByRole('button', { name: '登录/注册' }));
 
-    expect(
-      await screen.findByRole('button', { name: /竞速登录/ }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '我' })).toBeInTheDocument();
 
     await act(async () => {
       resolveInitialSession?.(guestSession());
       await initialSessionPromise;
     });
 
-    expect(
-      screen.getByRole('button', { name: /竞速登录/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '我' })).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: '登录' }),
     ).not.toBeInTheDocument();
@@ -293,9 +282,7 @@ describe('Home', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '完成注册' }));
     await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: /新蓝友/ }),
-      ).toBeInTheDocument(),
+      expect(screen.getByRole('link', { name: '我' })).toBeInTheDocument(),
     );
     expect(
       fetchMock.mock.calls.some(([url]) =>
@@ -344,18 +331,14 @@ describe('Home', () => {
       target: { value: '竞速注册' },
     });
     fireEvent.click(screen.getByRole('button', { name: '完成注册' }));
-    expect(
-      await screen.findByRole('button', { name: /竞速注册/ }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '我' })).toBeInTheDocument();
 
     await act(async () => {
       resolveInitialSession?.(guestSession());
       await initialSessionPromise;
     });
 
-    expect(
-      screen.getByRole('button', { name: /竞速注册/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '我' })).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: '登录' }),
     ).not.toBeInTheDocument();
@@ -379,10 +362,19 @@ describe('Home', () => {
 
     render(<Home />);
 
-    expect(
-      await screen.findByRole('button', { name: /归航/ }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '我' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('automatically opens login after a protected-route redirect', async () => {
+    window.history.replaceState(null, '', '/?login=1');
+
+    render(<Home />);
+
+    expect(
+      await screen.findByRole('dialog', { name: '邮箱登录' }),
+    ).toBeInTheDocument();
+    expect(window.location.search).toBe('');
   });
 
   it('restores the profile step for an unexpired registration credential', async () => {

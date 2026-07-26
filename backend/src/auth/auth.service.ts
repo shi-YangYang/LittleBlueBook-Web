@@ -2,7 +2,9 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 
 import { ApiException } from '../common/api-exception.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { isValidNickname, normalizeEmail } from './email.js';
+import { LittleBlueBookIdService } from './little-blue-book-id.service.js';
 import { RegistrationCredentialService } from './registration-credential.service.js';
 import { SessionService } from './session.service.js';
 import type {
@@ -14,6 +16,8 @@ import { VerificationCodeService } from './verification-code.service.js';
 
 @Injectable()
 export class AuthService {
+  private static readonly ID_GENERATION_ATTEMPTS = 10;
+
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(VerificationCodeService)
@@ -21,6 +25,8 @@ export class AuthService {
     @Inject(RegistrationCredentialService)
     private readonly registrationCredentials: RegistrationCredentialService,
     @Inject(SessionService) private readonly sessions: SessionService,
+    @Inject(LittleBlueBookIdService)
+    private readonly littleBlueBookIds: LittleBlueBookIdService,
   ) {}
 
   async requestCode(email: string, sourceIp: string): Promise<void> {
@@ -81,17 +87,11 @@ export class AuthService {
     }
 
     const now = new Date();
-    const user = await this.prisma.user.upsert({
-      where: { email: registration.email },
-      create: {
-        email: registration.email,
-        nickname,
-        lastLoginAt: now,
-      },
-      update: {
-        lastLoginAt: now,
-      },
-    });
+    const user = await this.createOrRefreshUser(
+      registration.email,
+      nickname,
+      now,
+    );
     const sessionId = await this.sessions.create(user.id);
 
     return {
@@ -143,6 +143,59 @@ export class AuthService {
       'REGISTRATION_EXPIRED',
       '验证状态已失效，请重新获取验证码',
     );
+  }
+
+  private async createOrRefreshUser(
+    email: string,
+    nickname: string,
+    lastLoginAt: Date,
+  ) {
+    for (
+      let attempt = 0;
+      attempt < AuthService.ID_GENERATION_ATTEMPTS;
+      attempt += 1
+    ) {
+      try {
+        return await this.prisma.user.upsert({
+          where: { email },
+          create: {
+            email,
+            nickname,
+            littleBlueBookId: this.littleBlueBookIds.generate(),
+            gender: 'PRIVATE',
+            lastLoginAt,
+          },
+          update: {
+            lastLoginAt,
+          },
+        });
+      } catch (error) {
+        if (this.isLittleBlueBookIdConflict(error)) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new ApiException(
+      HttpStatus.INTERNAL_SERVER_ERROR,
+      'USER_ID_GENERATION_FAILED',
+      '注册失败，请稍后重试',
+    );
+  }
+
+  private isLittleBlueBookIdConflict(error: unknown): boolean {
+    if (
+      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+      error.code !== 'P2002'
+    ) {
+      return false;
+    }
+
+    const target = error.meta?.target;
+    return Array.isArray(target)
+      ? target.includes('littleBlueBookId')
+      : String(target).includes('littleBlueBookId');
   }
 
   private toPublicUser(user: {

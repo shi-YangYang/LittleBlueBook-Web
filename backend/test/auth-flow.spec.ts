@@ -13,6 +13,8 @@ type TestUser = {
   id: string;
   email: string;
   nickname: string;
+  littleBlueBookId: string;
+  gender: 'MALE' | 'FEMALE' | 'PRIVATE';
   createdAt: Date;
   updatedAt: Date;
   lastLoginAt: Date;
@@ -122,7 +124,13 @@ class TestPrisma {
     upsert: jest.fn(
       async (input: {
         where: { email: string };
-        create: { email: string; nickname: string; lastLoginAt: Date };
+        create: {
+          email: string;
+          nickname: string;
+          littleBlueBookId: string;
+          gender: 'MALE' | 'FEMALE' | 'PRIVATE';
+          lastLoginAt: Date;
+        };
         update: { lastLoginAt: Date };
       }): Promise<TestUser> => {
         const existing = this.users.get(input.where.email);
@@ -135,6 +143,8 @@ class TestPrisma {
           id: `00000000-0000-4000-8000-${String(++this.sequence).padStart(12, '0')}`,
           email: input.create.email,
           nickname: input.create.nickname,
+          littleBlueBookId: input.create.littleBlueBookId,
+          gender: input.create.gender,
           createdAt: new Date(),
           updatedAt: new Date(),
           lastLoginAt: input.create.lastLoginAt,
@@ -271,6 +281,9 @@ describe('passwordless authentication API', () => {
       user: { email, nickname: '蓝书用户' },
     });
     const sessionCookie = cookieValue(registerResponse.headers, 'lbb_session');
+    const createdUser = prisma.users.get(email);
+    expect(createdUser?.littleBlueBookId).toMatch(/^\d{10}$/);
+    expect(createdUser?.gender).toBe('PRIVATE');
 
     await request(app.getHttpServer())
       .get('/api/v1/auth/session')
@@ -283,6 +296,24 @@ describe('passwordless authentication API', () => {
           registrationExpired: false,
           user: { email, nickname: '蓝书用户' },
         });
+      });
+
+    await request(app.getHttpServer())
+      .get('/api/v1/profile/me')
+      .set('Cookie', sessionCookie)
+      .expect(200)
+      .expect({
+        data: {
+          nickname: '蓝书用户',
+          littleBlueBookId: createdUser?.littleBlueBookId,
+          gender: '保密',
+          avatar: { type: 'initial', value: '蓝' },
+          stats: {
+            following: 0,
+            followers: 0,
+            receivedLikesAndFavorites: 0,
+          },
+        },
       });
 
     await request(app.getHttpServer())
@@ -310,6 +341,8 @@ describe('passwordless authentication API', () => {
       id: '00000000-0000-4000-8000-999999999999',
       email: 'existing@example.com',
       nickname: '已注册用户',
+      littleBlueBookId: '0000000001',
+      gender: 'PRIVATE',
       createdAt: new Date(),
       updatedAt: new Date(),
       lastLoginAt: new Date(),
@@ -336,5 +369,19 @@ describe('passwordless authentication API', () => {
       },
     });
     expect(cookieHeaders(response.headers)).toContain('lbb_session=');
+  });
+
+  it('rejects unauthenticated profile requests without leaking fields', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/profile/me')
+      .expect(401);
+
+    expect(response.body).toEqual({
+      statusCode: 401,
+      code: 'AUTHENTICATION_REQUIRED',
+      message: '请先登录',
+    });
+    expect(JSON.stringify(response.body)).not.toContain('email');
+    expect(JSON.stringify(response.body)).not.toContain('nickname');
   });
 });

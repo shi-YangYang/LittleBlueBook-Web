@@ -7,6 +7,7 @@ import { RedisModule } from '../redis/redis.module.js';
 import { AuthController } from './auth.controller.js';
 import { MAIL_SENDER } from './auth.constants.js';
 import { AuthService } from './auth.service.js';
+import { LittleBlueBookIdService } from './little-blue-book-id.service.js';
 import { MemoryVerificationMailSender } from './mail/memory-verification-mail.sender.js';
 import { SmtpVerificationMailSender } from './mail/smtp-verification-mail.sender.js';
 import type { VerificationMailSender } from './mail/verification-mail.sender.js';
@@ -19,6 +20,7 @@ import { VerificationCodeService } from './verification-code.service.js';
   controllers: [AuthController],
   providers: [
     AuthService,
+    LittleBlueBookIdService,
     VerificationCodeService,
     RegistrationCredentialService,
     SessionService,

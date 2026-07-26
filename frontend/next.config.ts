@@ -8,6 +8,7 @@ const projectDirectory = dirname(fileURLToPath(import.meta.url));
 const nextConfig: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: resolve(projectDirectory, '..'),
+  distDir: process.env.NEXT_DIST_DIR ?? '.next',
 };
 
 export default nextConfig;
