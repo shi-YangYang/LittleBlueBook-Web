@@ -157,6 +157,41 @@
 
 `pnpm build` 自动改写的 `frontend/next-env.d.ts` 已在交付前精确恢复为验收开始时的内容，未纳入本轮改动。
 
+## 提交后 CI 返工第 2 轮
+
+- 日期：2026-07-26
+- 触发原因：远程 CI 的 `pnpm test:e2e` 无法启动 Chromium Headless Shell
+- 实施 Agent：`ci_e2e_browser_rework3`，报告处理后已停止并永久退役
+- 用户流程指示：本轮只由实施 Agent 修复和自测，不再创建独立验收 Agent
+- 实施状态：COMPLETED
+- Spec 状态：继续保持 `Accepted`
+
+### 根因与修复
+
+CI 原安装命令包含 `--no-shell`，会跳过 Playwright 默认无头 Chromium 所需的独立 Headless Shell。工作流现改为：
+
+```text
+pnpm --filter e2e exec playwright install --with-deps chromium
+```
+
+`scripts/validate-ci.mjs` 同步要求上述标准安装命令，并拒绝 Playwright 安装命令再次包含 `--no-shell`。本轮未改变 CI 浏览器范围、手动触发器、权限、Action SHA、检查顺序或部署边界。
+
+### 实施自测证据
+
+| 检查 | 结果 |
+| --- | --- |
+| `playwright install --dry-run chromium` | PASS，列出 Chrome Headless Shell v1228，未下载 |
+| `pnpm ci:validate` | PASS |
+| 改动文件 Prettier 检查 | PASS |
+| `pnpm format:check` | PASS |
+| `pnpm lint` | PASS |
+| `git diff --check` | PASS |
+| 三浏览器九项目 E2E | PASS，48 项通过、42 项按设计跳过 |
+
+实施 Agent 使用项目已有 Firefox、WebKit 和系统 Edge 完成本地 E2E，没有下载浏览器。测试专属容器、网络、数据卷、端口和一次性 Playwright 产物均已清理。经用户明确授权，为解除 Next.js 开发目录锁，协调开发 Agent 停止了当时正在运行的本地 `pnpm dev:local` 进程；测试完成后未自动重启。
+
+远程 GitHub Actions 尚未重新运行，需在修复提交推送到 `dev` 后由用户手动触发确认 Linux Runner 结果。
+
 ## 后续轮次模板
 
 ```text

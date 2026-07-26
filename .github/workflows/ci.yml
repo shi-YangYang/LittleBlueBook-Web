@@ -88,7 +88,7 @@ jobs:
         run: pnpm test
 
       - name: Install Playwright browser
-        run: pnpm --filter e2e exec playwright install --with-deps --no-shell chromium
+        run: pnpm --filter e2e exec playwright install --with-deps chromium
 
       - name: Run browser end-to-end tests
         run: pnpm test:e2e

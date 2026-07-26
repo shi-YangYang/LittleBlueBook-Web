@@ -38,6 +38,7 @@ for (const requiredCommand of [
   'pnpm lint',
   'pnpm typecheck',
   'pnpm test',
+  'pnpm --filter e2e exec playwright install --with-deps chromium',
   'pnpm test:e2e',
   'pnpm build',
   'pnpm docker:build',
@@ -53,6 +54,10 @@ for (const match of workflowText.matchAll(/uses:\s*([^@\s]+)@([^\s#]+)/g)) {
   if (!/^[0-9a-f]{40}$/.test(reference)) {
     fail(`${action} is not pinned to an immutable commit SHA`);
   }
+}
+
+if (/playwright\s+install[^\r\n]*--no-shell/i.test(workflowText)) {
+  fail('Playwright browser installation must not skip the headless shell');
 }
 
 if (/docker\s+(push|login)|\bssh\b/i.test(workflowText)) {
