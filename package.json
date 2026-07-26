@@ -2,7 +2,7 @@
   "name": "littlebluebook-web",
   "version": "0.0.0",
   "private": true,
-  "description": "LittleBlueBook Web workspace",
+  "description": "小蓝书，专为西格玛男士打造",
   "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=24.0.0 <25.0.0",
