@@ -118,6 +118,45 @@
 - `pnpm ci:validate`、改动文件格式检查、`pnpm lint` 和 `git diff --check` 均通过；
 - 未创建临时测试副本，未执行暂存、提交、推送或其他远程操作。
 
+## 提交后 CI 返工第 1 轮
+
+- 日期：2026-07-26
+- 触发原因：[GitHub Actions 运行 30099114788](https://github.com/shi-YangYang/LittleBlueBook-Web/actions/runs/30099114788) 的 `Check formatting` 步骤失败，并报告旧版 JavaScript Action 以 Node.js 20 为目标运行时
+- 实施 Agent：`ci_post_acceptance_rework1`，报告处理后已停止并永久退役
+- 验收 Agent：`ci_post_acceptance_verify2`，报告处理后已停止并永久退役
+- 独立验收结论：PASS
+- Spec 状态：继续保持 `Accepted`
+
+### 修复结果
+
+- 原先未通过 Prettier 的 8 个文件现已全部符合项目格式；
+- `actions/checkout` 已固定到 v6.0.2 commit `de0fac2e4500dabe0009e67214ff5f5447ce83dd`；
+- `pnpm/action-setup` 已固定到 v6.0.9 commit `0ebf47130e4866e96fce0953f49152a61190b271`；
+- `actions/setup-node` 已固定到 v6.4.0 commit `48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e`；
+- `actions/upload-artifact` 已固定到 v6.0.0 commit `b7c566a772e6b6bfb58ed0dc250532a479d7789f`；
+- 四个 Action 的对应 `action.yml` 均声明 `runs.using: node24`；
+- `pnpm/action-setup` 的签名 Tag 对象 SHA `008330803749db0355799c700092d9a85fd074e9` 未被误用为 commit pin。
+
+### 独立复验证据
+
+| 检查 | 结果 |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | PASS |
+| 指定 8 文件 Prettier 检查 | PASS |
+| `pnpm format:check` | PASS |
+| `pnpm ci:validate` | PASS |
+| `pnpm lint` | PASS |
+| `pnpm typecheck` | PASS |
+| `pnpm db:validate` | PASS |
+| `pnpm db:generate` | PASS |
+| `pnpm test` | PASS，前端 15 项、后端 30 项 |
+| `pnpm build` | PASS |
+| `git diff --check` | PASS |
+
+验收未重复运行 E2E 和 Docker 构建，因为返工业务文件经独立比较确认仅存在 Prettier 排版变化，CI 工作流仅更新 Action 元数据。验收未运行远程 GitHub Actions。
+
+`pnpm build` 自动改写的 `frontend/next-env.d.ts` 已在交付前精确恢复为验收开始时的内容，未纳入本轮改动。
+
 ## 后续轮次模板
 
 ```text

@@ -1,9 +1,7 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
-const apiUrl =
-  process.env.E2E_API_URL ?? 'http://127.0.0.1:3101/api/v1';
-const frontendUrl =
-  process.env.E2E_FRONTEND_URL ?? 'http://127.0.0.1:3100';
+const apiUrl = process.env.E2E_API_URL ?? 'http://127.0.0.1:3101/api/v1';
+const frontendUrl = process.env.E2E_FRONTEND_URL ?? 'http://127.0.0.1:3100';
 const testCode = process.env.E2E_TEST_CODE ?? '246810';
 
 const existingUsers: Record<string, { email: string; nickname: string }> = {
@@ -39,9 +37,7 @@ async function openLogin(
 
 async function requestCode(page: Page, email: string): Promise<void> {
   await page.getByRole('textbox', { name: '邮箱', exact: true }).fill(email);
-  await page
-    .getByRole('checkbox', { name: '同意用户协议与隐私政策' })
-    .check();
+  await page.getByRole('checkbox', { name: '同意用户协议与隐私政策' }).check();
   const responsePromise = page.waitForResponse(
     (response) =>
       response.url() === `${apiUrl}/auth/email-code/request` &&

@@ -52,8 +52,7 @@ const applicationEnvironment = {
   SWAGGER_ENABLED: 'false',
   TRUST_PROXY_HOPS: '0',
   COOKIE_SECURE: 'false',
-  AUTH_CODE_HASH_SECRET:
-    'spec-002-e2e-only-hash-secret-at-least-32-characters',
+  AUTH_CODE_HASH_SECRET: 'spec-002-e2e-only-hash-secret-at-least-32-characters',
   SMTP_HOST: 'smtp.163.com',
   SMTP_PORT: '465',
   SMTP_SECURE: 'true',
@@ -118,11 +117,9 @@ async function stop(child) {
   }
 
   if (process.platform === 'win32') {
-    await run(
-      'taskkill.exe',
-      ['/pid', String(child.pid), '/t', '/f'],
-      { stdio: 'ignore' },
-    ).catch(() => undefined);
+    await run('taskkill.exe', ['/pid', String(child.pid), '/t', '/f'], {
+      stdio: 'ignore',
+    }).catch(() => undefined);
     return;
   }
 
@@ -231,8 +228,7 @@ async function seedUsersAndSessions() {
   const sessions = ['spec002-device-a-session', 'spec002-device-b-session'];
   for (const sessionId of sessions) {
     const key =
-      'auth:session:' +
-      createHash('sha256').update(sessionId).digest('hex');
+      'auth:session:' + createHash('sha256').update(sessionId).digest('hex');
     const value = JSON.stringify({
       userId: multiDeviceUserId,
       createdAt: new Date().toISOString(),
@@ -315,11 +311,10 @@ async function cleanup() {
 }
 
 async function main() {
-  await run(
-    dockerCommand,
-    composeArgs('down', '--remove-orphans'),
-    { env: composeEnvironment, stdio: 'ignore' },
-  ).catch(() => undefined);
+  await run(dockerCommand, composeArgs('down', '--remove-orphans'), {
+    env: composeEnvironment,
+    stdio: 'ignore',
+  }).catch(() => undefined);
 
   await Promise.all(
     [postgresPort, redisPort, frontendPort, backendPort].map(assertPortFree),
@@ -365,9 +360,7 @@ async function main() {
   const chromiumPath = findSystemChromium();
   const browserFamilies = await availableBrowserFamilies(chromiumPath);
   const projectArguments = browserFamilies.flatMap((browser) =>
-    [1280, 1440, 1920].map(
-      (viewport) => `--project=${browser}-${viewport}`,
-    ),
+    [1280, 1440, 1920].map((viewport) => `--project=${browser}-${viewport}`),
   );
   await runPnpm(['exec', 'playwright', 'test', ...projectArguments], {
     cwd: e2eRoot,

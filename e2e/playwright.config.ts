@@ -1,10 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const isCi = Boolean(process.env.CI);
-const baseURL =
-  process.env.E2E_FRONTEND_URL ?? 'http://127.0.0.1:3100';
-const chromiumExecutablePath =
-  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+const baseURL = process.env.E2E_FRONTEND_URL ?? 'http://127.0.0.1:3100';
+const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 
 const browsers = [
   {

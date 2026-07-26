@@ -358,10 +358,7 @@ export default function Home() {
 
     void apiRequest<SessionResult>('/auth/session')
       .then((session) => {
-        if (
-          !active ||
-          authStateVersionRef.current !== sessionRequestVersion
-        ) {
+        if (!active || authStateVersionRef.current !== sessionRequestVersion) {
           return;
         }
         setUser(session.authenticated ? session.user : null);
@@ -381,10 +378,7 @@ export default function Home() {
         }
       })
       .catch(() => {
-        if (
-          !active ||
-          authStateVersionRef.current !== sessionRequestVersion
-        ) {
+        if (!active || authStateVersionRef.current !== sessionRequestVersion) {
           return;
         }
         setUser(null);
@@ -433,9 +427,7 @@ export default function Home() {
 
   const openModal = () => {
     setError(
-      registrationExpiredNotice
-        ? '验证状态已失效，请重新获取验证码'
-        : '',
+      registrationExpiredNotice ? '验证状态已失效，请重新获取验证码' : '',
     );
     setRegistrationExpiredNotice(false);
     setModalOpen(true);

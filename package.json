@@ -11,6 +11,7 @@
   "scripts": {
     "postinstall": "pnpm --filter backend db:generate",
     "dev": "pnpm --filter frontend --filter backend --parallel run dev",
+    "dev:local": "pnpm infra:up && pnpm db:deploy && pnpm dev",
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose down",
     "infra:logs": "docker compose logs --follow",
