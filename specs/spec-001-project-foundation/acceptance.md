@@ -192,6 +192,18 @@ pnpm --filter e2e exec playwright install --with-deps chromium
 
 远程 GitHub Actions 尚未重新运行，需在修复提交推送到 `dev` 后由用户手动触发确认 Linux Runner 结果。
 
+## 版本 1.3：Browser E2E 移出常规 CI
+
+- 日期：2026-07-26
+- 决策人：用户
+- 状态：已确认并实施
+
+用户基于多次远程浏览器环境失败，确认常规 `ci.yml` 不再安装浏览器或运行 `pnpm test:e2e`。Playwright 配置、E2E 测试和本地运行命令继续保留并纳入 Git；具体 Spec 要求的 Browser E2E 仍由实施和独立验收在本地执行。
+
+常规 CI 继续执行格式检查、Lint、类型检查、Prisma 校验与生成、前后端单元/集成测试、应用构建及 Docker 构建。其中根级 Lint 和类型检查仍覆盖 `e2e/` 源码。
+
+本次调整属于用户确认的 CI 范围策略变更，不撤销 SPEC-001 已有验收历史和 `Accepted` 状态。
+
 ## 后续轮次模板
 
 ```text

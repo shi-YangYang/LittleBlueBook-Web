@@ -100,7 +100,7 @@ pnpm build
 pnpm docker:build
 ```
 
-`pnpm test:e2e` 会确定性等待前后端健康后再执行浏览器测试。CI 在全新的 Linux 环境中执行同类检查，并额外验证工作流本身；CI 不发布镜像，也不连接生产服务器。
+`pnpm test:e2e` 会确定性等待前后端健康后再执行浏览器测试，该命令用于本地实施和独立验收。常规 CI 不安装浏览器，也不运行 Browser E2E；它仍会检查 `e2e/` 源码的 Lint 和类型，并执行前后端测试、构建及 Docker 构建。CI 不发布镜像，也不连接生产服务器。
 
 ## 手动运行 CI
 
@@ -152,7 +152,7 @@ Prisma Schema 位于 `backend/prisma/schema.prisma`。当前工程基础没有�
 - **后端启动时提示配置无效**：确认 `backend/.env` 已从示例创建，且所有必填键存在。错误不会打印连接串内容。
 - **就绪检查返回 503**：运行 `docker compose ps` 检查 PostgreSQL、Redis 健康状态，再查看 `pnpm infra:logs`。
 - **Prisma Client 缺失**：运行 `pnpm db:validate` 和 `pnpm db:generate`。
-- **Playwright 缺少浏览器**：运行 `pnpm --filter e2e exec playwright install --no-shell chromium`；Linux CI 使用 `--with-deps` 安装系统依赖。项目使用完整 Chromium 的新版无头模式，因此不需要单独下载旧的 headless shell。
+- **Playwright 缺少浏览器**：本地运行 `pnpm --filter e2e exec playwright install --no-shell chromium`。常规 CI 不安装浏览器或运行 Browser E2E；如未来在 Linux 环境单独运行 E2E，需要同时准备对应系统依赖。
 - **Docker 构建无法拉取基础镜像**：检查 Docker daemon、Docker Hub 网络访问和代理设置。
 
 ## 仓库结构

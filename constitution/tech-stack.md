@@ -64,6 +64,7 @@
 - 日常开发提交到 `dev`，普通推送不自动运行 CI；
 - 需要验证时，通过 `workflow_dispatch` 手动选择 `dev` 运行 CI，通过后再合并到 `main`；
 - CI 不作为 Spec 完成门禁，也不要求逐个生成或部署正式生产镜像；
+- 常规 CI 不安装浏览器、不运行 Playwright Browser E2E；E2E 保留在项目源码中，由每个 Spec 的本地实施与独立验收按需执行；
 - 准备发布时，在选定的 `main` 分支提交上创建 `vMAJOR.MINOR.PATCH` 格式的 Git Tag；
 - 发布流水线根据 Git Tag 重新执行强制检查，构建正式镜像并同时使用发布版本和 Git Commit SHA 标记；
 - 生产部署只选择已经生成的正式发布镜像，不以 `latest` 作为唯一版本；
@@ -76,7 +77,7 @@
 
 | 流水线 | 触发方式 | 职责 |
 | --- | --- | --- |
-| `ci.yml` | `workflow_dispatch` 手动选择 `dev` | 代码规范、类型检查、测试、前后端构建和 Docker 构建有效性检查；不发布生产镜像 |
+| `ci.yml` | `workflow_dispatch` 手动选择 `dev` | 代码规范、类型检查、数据库校验、前后端单元/集成测试、应用构建和 Docker 构建有效性检查；不安装浏览器、不运行 Browser E2E、不发布生产镜像 |
 | `release-images.yml` | 创建 `v*` Git Tag | 重新执行强制检查，构建前后端正式镜像并推送到 GHCR |
 | `deploy-production.yml` | `workflow_dispatch` 人工触发 | 选择已发布版本，连接生产服务器，更新 Docker Compose 服务，执行健康检查并在失败时回滚 |
 

@@ -87,12 +87,6 @@ jobs:
       - name: Run unit and integration tests
         run: pnpm test
 
-      - name: Install Playwright browser
-        run: pnpm --filter e2e exec playwright install --with-deps chromium
-
-      - name: Run browser end-to-end tests
-        run: pnpm test:e2e
-
       - name: Build applications
         run: pnpm build
 
@@ -109,5 +103,3 @@ jobs:
           path: |
             frontend/coverage/
             backend/coverage/
-            e2e/playwright-report/
-            e2e/test-results/

@@ -38,8 +38,6 @@ for (const requiredCommand of [
   'pnpm lint',
   'pnpm typecheck',
   'pnpm test',
-  'pnpm --filter e2e exec playwright install --with-deps chromium',
-  'pnpm test:e2e',
   'pnpm build',
   'pnpm docker:build',
 ]) {
@@ -56,8 +54,8 @@ for (const match of workflowText.matchAll(/uses:\s*([^@\s]+)@([^\s#]+)/g)) {
   }
 }
 
-if (/playwright\s+install[^\r\n]*--no-shell/i.test(workflowText)) {
-  fail('Playwright browser installation must not skip the headless shell');
+if (/playwright\s+install|pnpm\s+test:e2e/i.test(workflowText)) {
+  fail('regular CI must not install browsers or run browser E2E');
 }
 
 if (/docker\s+(push|login)|\bssh\b/i.test(workflowText)) {
