@@ -519,28 +519,36 @@ test('keeps the publish layout usable at every configured desktop viewport', asy
   );
 });
 
-test('keeps an empty publish page free of root scrolling across the compact-layout boundary', async ({
+test('continuously adapts an empty publish page without height-specific layout gaps', async ({
   context,
   page,
 }, testInfo) => {
   test.skip(
     testInfo.project.name !== 'chromium-1440',
-    'The compact-layout boundary is browser-independent and uses Chromium geometry.',
+    'Continuous resize geometry is browser-independent and uses Chromium once.',
   );
   await addContentSession(context);
+  await page.setViewportSize({ width: 1273, height: 613 });
+  await page.goto('/publish');
 
-  for (const height of [821, 850, 868]) {
-    await page.setViewportSize({ width: 1440, height });
-    await page.goto('/publish');
+  for (const height of [613, 727, 839, 947]) {
+    await page.setViewportSize({ width: 1273, height });
     await expect(
       page.getByRole('heading', { name: '发布图文笔记' }),
     ).toBeVisible();
 
-    const rootHeight = await page.evaluate(() => ({
+    const rootLayout = await page.evaluate(() => ({
       clientHeight: document.documentElement.clientHeight,
       scrollHeight: document.documentElement.scrollHeight,
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
     }));
-    expect(rootHeight.scrollHeight).toBe(rootHeight.clientHeight);
+    expect(
+      rootLayout.scrollHeight - rootLayout.clientHeight,
+    ).toBeLessThanOrEqual(1);
+    expect(rootLayout.scrollWidth - rootLayout.clientWidth).toBeLessThanOrEqual(
+      1,
+    );
   }
 });
 

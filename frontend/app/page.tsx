@@ -13,6 +13,7 @@ import {
 
 import { Icon } from './_components/icon';
 import { NoteFeed } from './_components/note-feed';
+import { lockDocumentScroll } from './_lib/document-scroll-lock';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3001/api/v1';
@@ -215,8 +216,11 @@ export default function Home() {
 
   useEffect(() => {
     if (!modalOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    return lockDocumentScroll();
+  }, [modalOpen]);
+
+  useEffect(() => {
+    if (!modalOpen) return;
     window.setTimeout(() => {
       if (step === 'verify') {
         const emailInput =
@@ -230,9 +234,6 @@ export default function Home() {
         nicknameInput?.focus();
       }
     }, 0);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
   }, [modalOpen, step]);
 
   const openModal = () => {
