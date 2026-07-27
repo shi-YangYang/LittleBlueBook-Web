@@ -1,13 +1,21 @@
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmdirSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const e2eRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(e2eRoot, '..');
-const composeProject = 'littlebluebook-spec003-e2e';
+const composeProject = 'littlebluebook-spec004-e2e';
 const dockerCommand = process.platform === 'win32' ? 'docker.exe' : 'docker';
 const pnpmCli = process.env.npm_execpath;
 const pnpmCommand = pnpmCli
@@ -16,6 +24,7 @@ const pnpmCommand = pnpmCli
     ? 'pnpm.cmd'
     : 'pnpm';
 const pnpmPrefix = pnpmCli ? [pnpmCli] : [];
+const playwrightArguments = process.argv.slice(2);
 
 const postgresPort = 55432;
 const redisPort = 56379;
@@ -32,6 +41,9 @@ const databaseUrl =
 const redisUrl = `redis://127.0.0.1:${redisPort}`;
 const frontendUrl = `http://127.0.0.1:${frontendPort}`;
 const apiUrl = `http://127.0.0.1:${backendPort}/api/v1`;
+const repositoryTestRoot = path.resolve(repoRoot, 'test');
+const taskTestRoot = path.resolve(repositoryTestRoot, 'spec004-e2e');
+const mediaRoot = path.resolve(taskTestRoot, 'media');
 
 const composeEnvironment = {
   ...process.env,
@@ -62,6 +74,8 @@ const applicationEnvironment = {
   SMTP_FROM_NAME: '小蓝书',
   MAIL_TRANSPORT: 'memory',
   E2E_TEST_CODE: testCode,
+  MEDIA_ROOT: mediaRoot,
+  MEDIA_PUBLIC_BASE_URL: `${apiUrl}/media`,
 };
 
 let backendProcess;
@@ -69,6 +83,36 @@ let frontendProcess;
 let infrastructureStarted = false;
 let cleaningUp = false;
 let frontendGeneratedFileSnapshots;
+
+function removeTaskTestDirectory() {
+  if (
+    path.dirname(taskTestRoot) !== repositoryTestRoot ||
+    !taskTestRoot.startsWith(`${repositoryTestRoot}${path.sep}`)
+  ) {
+    throw new Error('Refusing to clean an unexpected E2E test directory.');
+  }
+  if (!existsSync(taskTestRoot)) {
+    return;
+  }
+
+  const removeEntries = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const target = path.resolve(directory, entry.name);
+      if (!target.startsWith(`${taskTestRoot}${path.sep}`)) {
+        throw new Error('Refusing to clean an unexpected E2E test entry.');
+      }
+      if (entry.isDirectory() && !entry.isSymbolicLink()) {
+        removeEntries(target);
+        rmdirSync(target);
+      } else {
+        unlinkSync(target);
+      }
+    }
+  };
+
+  removeEntries(taskTestRoot);
+  rmdirSync(taskTestRoot);
+}
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -197,6 +241,12 @@ async function seedUsersAndSessions() {
       '多端蓝友',
       '0000000104',
     ],
+    [
+      '00000000-0000-4000-8000-000000000105',
+      'content-author@example.com',
+      '内容蓝友',
+      '0000000105',
+    ],
   ];
   const values = users
     .map(
@@ -231,17 +281,19 @@ async function seedUsersAndSessions() {
   );
 
   const multiDeviceUserId = users[3][0];
+  const contentUserId = users[4][0];
   const sessions = [
-    'spec002-device-a-session',
-    'spec002-device-b-session',
-    'spec003-profile-session',
-    'spec003-logout-session',
+    ['spec002-device-a-session', multiDeviceUserId],
+    ['spec002-device-b-session', multiDeviceUserId],
+    ['spec003-profile-session', multiDeviceUserId],
+    ['spec003-logout-session', multiDeviceUserId],
+    ['spec004-content-session', contentUserId],
   ];
-  for (const sessionId of sessions) {
+  for (const [sessionId, userId] of sessions) {
     const key =
       'auth:session:' + createHash('sha256').update(sessionId).digest('hex');
     const value = JSON.stringify({
-      userId: multiDeviceUserId,
+      userId,
       createdAt: new Date().toISOString(),
     });
     await run(
@@ -416,9 +468,20 @@ async function cleanup() {
       { env: composeEnvironment },
     ).catch(() => undefined);
   }
+
+  removeTaskTestDirectory();
+  if (existsSync(taskTestRoot)) {
+    throw new Error('E2E test media directory cleanup did not complete.');
+  }
 }
 
 async function main() {
+  removeTaskTestDirectory();
+  if (existsSync(taskTestRoot)) {
+    throw new Error('Unable to prepare a clean E2E test directory.');
+  }
+  mkdirSync(mediaRoot, { recursive: true });
+
   await run(dockerCommand, composeArgs('down', '--remove-orphans'), {
     env: composeEnvironment,
     stdio: 'ignore',
@@ -476,18 +539,32 @@ async function main() {
   const projectArguments = browserFamilies.flatMap((browser) =>
     [1280, 1440, 1920].map((viewport) => `--project=${browser}-${viewport}`),
   );
-  await runPnpm(['exec', 'playwright', 'test', ...projectArguments], {
-    cwd: e2eRoot,
-    env: {
-      ...applicationEnvironment,
-      E2E_FRONTEND_URL: frontendUrl,
-      E2E_API_URL: apiUrl,
-      PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH ?? '0',
-      ...(chromiumPath
-        ? { PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: chromiumPath }
-        : {}),
+  const selectedProjectArguments = playwrightArguments.some((argument) =>
+    argument.startsWith('--project'),
+  )
+    ? []
+    : projectArguments;
+  await runPnpm(
+    [
+      'exec',
+      'playwright',
+      'test',
+      ...selectedProjectArguments,
+      ...playwrightArguments,
+    ],
+    {
+      cwd: e2eRoot,
+      env: {
+        ...applicationEnvironment,
+        E2E_FRONTEND_URL: frontendUrl,
+        E2E_API_URL: apiUrl,
+        PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH ?? '0',
+        ...(chromiumPath
+          ? { PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: chromiumPath }
+          : {}),
+      },
     },
-  });
+  );
 }
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

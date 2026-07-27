@@ -24,6 +24,39 @@ model User {
   createdAt        DateTime @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime @updatedAt @db.Timestamptz(3)
   lastLoginAt      DateTime @default(now()) @db.Timestamptz(3)
+  notes            Note[]
 
   @@map("users")
+}
+
+model Note {
+  id              String      @id @default(uuid()) @db.Uuid
+  authorId        String      @db.Uuid
+  title           String      @db.VarChar(50)
+  content         String      @db.Text
+  clientRequestId String      @db.Uuid
+  createdAt       DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime    @updatedAt @db.Timestamptz(3)
+  author          User        @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  images          NoteImage[]
+
+  @@unique([authorId, clientRequestId])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([authorId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("notes")
+}
+
+model NoteImage {
+  id        String   @id @default(uuid()) @db.Uuid
+  noteId    String   @db.Uuid
+  objectKey String   @unique @db.VarChar(64)
+  mimeType  String   @db.VarChar(16)
+  byteSize  Int
+  width     Int
+  height    Int
+  order     Int
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@unique([noteId, order])
+  @@map("note_images")
 }

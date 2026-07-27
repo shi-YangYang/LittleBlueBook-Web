@@ -36,6 +36,27 @@ export class ApiExceptionFilter implements ExceptionFilter {
         return;
       }
 
+      if (status === HttpStatus.PAYLOAD_TOO_LARGE) {
+        response.status(status).json({
+          statusCode: status,
+          code: 'IMAGE_TOO_LARGE',
+          message: '单张图片不能超过10 MiB',
+        } satisfies ApiErrorBody);
+        return;
+      }
+
+      if (
+        status === HttpStatus.BAD_REQUEST &&
+        /(?:file|field|multipart)/i.test(exception.message)
+      ) {
+        response.status(status).json({
+          statusCode: status,
+          code: 'MULTIPART_INVALID',
+          message: '图片数量或上传数据不符合要求',
+        } satisfies ApiErrorBody);
+        return;
+      }
+
       response.status(status).json({
         statusCode: status,
         code: 'HTTP_ERROR',

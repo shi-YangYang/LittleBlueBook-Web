@@ -12,6 +12,7 @@ import {
 } from 'react';
 
 import { Icon } from '../_components/icon';
+import { NoteFeed } from '../_components/note-feed';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3001/api/v1';
@@ -20,7 +21,7 @@ const menuItems = [
   { icon: 'discover', label: '发现', href: '/' },
   { icon: 'video', label: '视频' },
   { icon: 'live', label: '直播' },
-  { icon: 'publish', label: '发布' },
+  { icon: 'publish', label: '发布', href: '/publish' },
   { icon: 'notice', label: '通知' },
 ] as const;
 
@@ -269,10 +270,17 @@ export default function ProfilePage() {
         <nav className="primary-nav" aria-label="主要功能">
           {menuItems.map((item) =>
             'href' in item ? (
-              <Link className="nav-item" href={item.href} key={item.label}>
-                <Icon name={item.icon} />
-                <span>{item.label}</span>
-              </Link>
+              item.href === '/publish' ? (
+                <a className="nav-item" href={item.href} key={item.label}>
+                  <Icon name={item.icon} />
+                  <span>{item.label}</span>
+                </a>
+              ) : (
+                <Link className="nav-item" href={item.href} key={item.label}>
+                  <Icon name={item.icon} />
+                  <span>{item.label}</span>
+                </Link>
+              )
             ) : (
               <button
                 className="nav-item"
@@ -477,8 +485,21 @@ export default function ProfilePage() {
                     tabIndex={0}
                     hidden={activeTab !== tab.id}
                   >
-                    <Icon name="empty" size={48} />
-                    <p>{tab.emptyMessage}</p>
+                    {tab.id === 'notes' ? (
+                      <NoteFeed
+                        endpoint="/notes/mine"
+                        label="我的笔记"
+                        emptyMessage={tab.emptyMessage}
+                        errorMessage="笔记加载失败，请稍后重试"
+                        onPublish={() => window.location.assign('/publish')}
+                        onUnauthorized={redirectToLogin}
+                      />
+                    ) : (
+                      <>
+                        <Icon name="empty" size={48} />
+                        <p>{tab.emptyMessage}</p>
+                      </>
+                    )}
                   </div>
                 ))}
               </section>

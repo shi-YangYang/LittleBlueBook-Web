@@ -89,6 +89,27 @@ export function Icon({ name, size = 24 }: { name: string; size?: number }) {
         <circle cx="9" cy="9" r="1" />
       </>
     ),
+    topic: (
+      <>
+        <path d="M10 3 8 21M16 3l-2 18M4 9h16M3 15h16" />
+      </>
+    ),
+    comment: (
+      <>
+        <path d="M21 12a8.5 8.5 0 0 1-9 8 9.8 9.8 0 0 1-4-.8L3 21l1.6-4.2A8 8 0 0 1 3 12a8.5 8.5 0 0 1 9-8 8.5 8.5 0 0 1 9 8Z" />
+      </>
+    ),
+    bookmark: (
+      <path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-4-6 4z" />
+    ),
+    share: (
+      <>
+        <path d="M12 16V3m0 0L7 8m5-5 5 5" />
+        <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
+      </>
+    ),
+    chevronLeft: <path d="m15 18-6-6 6-6" />,
+    chevronRight: <path d="m9 18 6-6-6-6" />,
   };
 
   return <svg {...common}>{paths[name]}</svg>;

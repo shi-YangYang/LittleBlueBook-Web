@@ -4,6 +4,8 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module.js';
 import { validateEnvironment } from './config/environment.js';
 import { HealthModule } from './health/health.module.js';
+import { MediaModule } from './media/media.module.js';
+import { NotesModule } from './notes/notes.module.js';
 import { ProfileModule } from './profile/profile.module.js';
 
 @Module({
@@ -15,6 +17,8 @@ import { ProfileModule } from './profile/profile.module.js';
     }),
     AuthModule,
     HealthModule,
+    MediaModule,
+    NotesModule,
     ProfileModule,
   ],
 })

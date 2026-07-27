@@ -28,6 +28,18 @@ function validationMessage(errors: ValidationError[]): string {
   if (fields.has('code')) {
     return '请输入6位数字验证码';
   }
+  if (fields.has('title')) {
+    return '标题需为1～50个字符';
+  }
+  if (fields.has('content')) {
+    return '正文需为1～2000个字符';
+  }
+  if (fields.has('clientRequestId')) {
+    return '发布请求标识无效';
+  }
+  if (fields.has('cursor') || fields.has('limit')) {
+    return '分页参数无效';
+  }
   return '请求参数无效';
 }
 

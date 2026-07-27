@@ -18,3 +18,5 @@ process.env.SMTP_AUTH_CODE = 'test-only-placeholder';
 process.env.SMTP_FROM_NAME = '小蓝书';
 process.env.MAIL_TRANSPORT = 'memory';
 process.env.E2E_TEST_CODE = '246810';
+process.env.MEDIA_ROOT = '../.data/test-media';
+process.env.MEDIA_PUBLIC_BASE_URL = 'http://127.0.0.1:3001/api/v1/media';

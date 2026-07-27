@@ -29,8 +29,8 @@ backend/src/generated/
 # Local runtime data
 .data/
 data/
-media/
-uploads/
+/media/
+/uploads/
 
 # Tool and editor files
 .DS_Store
