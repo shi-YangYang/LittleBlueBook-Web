@@ -1,8 +1,8 @@
 # SPEC-005 实施计划
 
 - Spec：`specs/spec-005-adaptive-height-and-scroll/spec.md`
-- Spec 状态：Accepting
-- 计划状态：Round 2 Independent Reacceptance PASS；Awaiting User Confirmation
+- Spec 状态：Accepted
+- 计划状态：Completed
 - 更新日期：2026-07-27
 
 用户已于 2026-07-27 确认 `spec.md` v1.0 并明确要求开始实施。本轮由一个新的单一实施 Agent 串行完成全部范围。
@@ -224,3 +224,10 @@
 | `git diff --check` | PASS | 无空白错误 |
 
 临时探针、测试产物和隔离资源已清理；正常工作区 `node_modules` 保留。当前等待用户实际审查并确认验收完成。
+
+## 14. 用户最终验收
+
+- 用户于 2026-07-27 确认 CI 测试通过并开始 SPEC-006；
+- 用户确认结束 SPEC-005 验收；
+- SPEC-005 已更新为 `Accepted`；
+- CI 结果作为提交后反馈记录，不作为 Spec 完成门禁。
