@@ -225,6 +225,8 @@ describe('PublishPage', () => {
     expect(
       await screen.findByRole('dialog', { name: '邮箱登录' }),
     ).toBeVisible();
+    expect(document.documentElement.style.overflow).toBe('hidden');
+    expect(document.body.style.overflow).toBe('hidden');
     expect(screen.getByLabelText('标题')).toHaveValue('会被保留的标题');
     expect(screen.getByLabelText('正文')).toHaveValue('会被保留的正文');
     expect(screen.getByAltText('第1张预览')).toHaveAttribute(

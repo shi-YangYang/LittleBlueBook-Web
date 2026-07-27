@@ -1,9 +1,19 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 
 import { apiRequest, ApiRequestError } from '../_lib/api';
-import type { NoteCardData, NotePageData } from '../_lib/notes';
+import {
+  consumeNoteListScrollRestore,
+  type NoteCardData,
+  type NotePageData,
+} from '../_lib/notes';
 import { Icon } from './icon';
 import { NoteCard } from './note-card';
 
@@ -78,6 +88,15 @@ export function NoteFeed({
       active = false;
     };
   }, [readPage, reloadVersion]);
+
+  useLayoutEffect(() => {
+    if (loading || initialError) return;
+    const path = `${window.location.pathname}${window.location.search}`;
+    const scrollY = consumeNoteListScrollRestore(path);
+    if (scrollY !== null) {
+      window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
+    }
+  }, [initialError, items.length, loading]);
 
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore) return;

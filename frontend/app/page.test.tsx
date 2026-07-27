@@ -515,6 +515,8 @@ describe('Home', () => {
     const login = screen.getByRole('button', { name: '登录' });
     fireEvent.click(login);
     const dialog = screen.getByRole('dialog');
+    expect(document.documentElement.style.overflow).toBe('hidden');
+    expect(document.body.style.overflow).toBe('hidden');
 
     const backdrop = document.querySelector('.modal-backdrop');
     expect(backdrop).not.toBeNull();
@@ -532,6 +534,8 @@ describe('Home', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await waitFor(() => expect(login).toHaveFocus());
+    expect(document.documentElement.style.overflow).toBe('');
+    expect(document.body.style.overflow).toBe('');
   });
 
   it('shows the exact remaining-attempt error returned by the API', async () => {

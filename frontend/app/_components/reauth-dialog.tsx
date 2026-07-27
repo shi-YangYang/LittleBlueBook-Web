@@ -10,6 +10,7 @@ import {
 } from 'react';
 
 import { apiRequest, ApiRequestError } from '../_lib/api';
+import { lockDocumentScroll } from '../_lib/document-scroll-lock';
 import { Icon } from './icon';
 
 type AuthenticatedUser = {
@@ -57,8 +58,11 @@ export function ReauthDialog({ open, onAuthenticated }: ReauthDialogProps) {
 
   useEffect(() => {
     if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    return lockDocumentScroll();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     window.setTimeout(() => {
       dialogRef.current
         ?.querySelector<HTMLInputElement>(
@@ -66,9 +70,6 @@ export function ReauthDialog({ open, onAuthenticated }: ReauthDialogProps) {
         )
         ?.focus();
     }, 0);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
   }, [open, step]);
 
   useEffect(() => {

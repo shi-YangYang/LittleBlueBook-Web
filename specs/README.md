@@ -10,6 +10,7 @@
 | SPEC-002 | 邮箱注册与登录 | Accepted | `spec-002-email-authentication/` |
 | SPEC-003 | 个人主页 | Accepted | `spec-003-user-profile/` |
 | SPEC-004 | 内容发布与展示 | Accepted | `spec-004-content-publishing/` |
+| SPEC-005 | 页面高度与滚动模型自适应改造 | Accepted | `spec-005-adaptive-height-and-scroll/` |
 
 ## 状态说明
 
