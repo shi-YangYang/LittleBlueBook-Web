@@ -1,9 +1,9 @@
 # SPEC-004 实施计划
 
 - Spec：`specs/spec-004-content-publishing/spec.md`
-- Spec 状态：Accepting
-- 计划状态：Round 5 Direct Fix Complete；Awaiting User Confirmation
-- 更新日期：2026-07-26
+- Spec 状态：Accepted
+- 计划状态：Completed
+- 更新日期：2026-07-27
 
 本计划只拆分用户已确认的 `spec.md` 版本 1.0。全部范围必须由一个实施 Agent 串行完成前端、后端、数据库、媒体存储和 E2E 改动，不得并行拆分或创建子 Agent。
 
@@ -305,3 +305,10 @@
 - 临时探针、Playwright 产物和隔离 Docker 资源已清理，用户开发容器未被修改。
 
 本轮未创建任何子 Agent、未调用 NVM、未安装运行时或浏览器、未操作 Git 或远程 CI。
+
+## 19. 用户最终验收
+
+- 用户于 2026-07-27 确认 CI 测试成功；
+- 用户明确确认 SPEC-004 验收完成；
+- SPEC-004 已按照项目工作流更新为 `Accepted`；
+- 后续提交与推送仍由用户自行完成。
