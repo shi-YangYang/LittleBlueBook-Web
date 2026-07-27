@@ -23,7 +23,7 @@ const browsers = [
 ];
 
 const viewports = [
-  { width: 1280, height: 900, expectedColumns: 3 },
+  { width: 1280, height: 720, expectedColumns: 3 },
   { width: 1440, height: 900, expectedColumns: 4 },
   { width: 1920, height: 1080, expectedColumns: 5 },
 ];

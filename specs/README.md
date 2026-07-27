@@ -9,6 +9,7 @@
 | SPEC-001 | 项目工程基础 | Accepted | `spec-001-project-foundation/` |
 | SPEC-002 | 邮箱注册与登录 | Accepted | `spec-002-email-authentication/` |
 | SPEC-003 | 个人主页 | Accepted | `spec-003-user-profile/` |
+| SPEC-004 | 内容发布与展示 | Accepting | `spec-004-content-publishing/` |
 
 ## 状态说明
 

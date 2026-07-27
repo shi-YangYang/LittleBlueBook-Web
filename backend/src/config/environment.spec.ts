@@ -42,6 +42,8 @@ describe('validateEnvironment', () => {
       SMTP_PORT: 465,
       SMTP_SECURE: true,
       MAIL_TRANSPORT: 'smtp',
+      MEDIA_ROOT: '../.data/media',
+      MEDIA_PUBLIC_BASE_URL: 'http://127.0.0.1:3001/api/v1/media',
     });
   });
 

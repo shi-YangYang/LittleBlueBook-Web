@@ -9,12 +9,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ProfilePage from './page';
 
-const { replaceMock } = vi.hoisted(() => ({
+const { pushMock, replaceMock } = vi.hoisted(() => ({
+  pushMock: vi.fn(),
   replaceMock: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
+    push: pushMock,
     replace: replaceMock,
   }),
 }));
@@ -47,10 +49,15 @@ const profile = {
 
 describe('ProfilePage', () => {
   beforeEach(() => {
+    pushMock.mockReset();
     replaceMock.mockReset();
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => response(profile)) as unknown as typeof fetch,
+      vi.fn(async (input: string | URL | Request) =>
+        String(input).includes('/notes/mine')
+          ? response({ items: [], nextCursor: null })
+          : response(profile),
+      ) as unknown as typeof fetch,
     );
   });
 
@@ -100,7 +107,7 @@ describe('ProfilePage', () => {
     const favorites = screen.getByRole('tab', { name: '收藏' });
     const likes = screen.getByRole('tab', { name: '点赞' });
     expect(notes).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('还没有发布笔记')).toBeVisible();
+    expect(await screen.findByText('还没有发布笔记')).toBeVisible();
 
     fireEvent.click(favorites);
     expect(favorites).toHaveAttribute('aria-selected', 'true');
@@ -133,6 +140,9 @@ describe('ProfilePage', () => {
   it('logs out from the profile menu and returns to the guest homepage', async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       if (String(input).endsWith('/profile/me')) return response(profile);
+      if (String(input).includes('/notes/mine')) {
+        return response({ items: [], nextCursor: null });
+      }
       if (String(input).endsWith('/auth/logout')) {
         return response({ success: true });
       }
@@ -156,6 +166,9 @@ describe('ProfilePage', () => {
   it('keeps the profile visible and reports a failed logout', async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       if (String(input).endsWith('/profile/me')) return response(profile);
+      if (String(input).includes('/notes/mine')) {
+        return response({ items: [], nextCursor: null });
+      }
       if (String(input).endsWith('/auth/logout')) {
         return response(
           {
@@ -205,19 +218,27 @@ describe('ProfilePage', () => {
   });
 
   it('clears protected data and requests login when the session expires', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(response(profile))
-      .mockResolvedValueOnce(
-        response(
+    let profileReads = 0;
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/notes/mine')) {
+        return response({ items: [], nextCursor: null });
+      }
+      if (url.endsWith('/profile/me') && profileReads++ === 0) {
+        return response(profile);
+      }
+      if (url.endsWith('/profile/me')) {
+        return response(
           {
             statusCode: 401,
             code: 'AUTHENTICATION_REQUIRED',
             message: '请先登录',
           },
           401,
-        ),
-      );
+        );
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     render(<ProfilePage />);
@@ -230,19 +251,25 @@ describe('ProfilePage', () => {
   });
 
   it('distinguishes an ordinary load failure and retries only the profile', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        response(
+    let profileReads = 0;
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/notes/mine')) {
+        return response({ items: [], nextCursor: null });
+      }
+      if (url.endsWith('/profile/me') && profileReads++ === 0) {
+        return response(
           {
             statusCode: 500,
             code: 'INTERNAL_ERROR',
             message: '网络异常，请稍后重试',
           },
           500,
-        ),
-      )
-      .mockResolvedValueOnce(response(profile));
+        );
+      }
+      if (url.endsWith('/profile/me')) return response(profile);
+      throw new Error(`Unexpected URL: ${url}`);
+    });
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     render(<ProfilePage />);
@@ -252,10 +279,14 @@ describe('ProfilePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
 
     expect(await screen.findByRole('heading', { name: '蓝海' })).toBeVisible();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(
-      fetchMock.mock.calls.every(([input]) =>
+      fetchMock.mock.calls.filter(([input]) =>
         String(input).endsWith('/profile/me'),
+      ),
+    ).toHaveLength(2);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).includes('/notes/mine'),
       ),
     ).toBe(true);
   });

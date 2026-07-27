@@ -31,6 +31,10 @@ const environmentSchema = z
     SMTP_AUTH_CODE: z.string().min(1),
     SMTP_FROM_NAME: z.string().min(1).default('小蓝书'),
     MAIL_TRANSPORT: z.enum(['smtp', 'memory']).default('smtp'),
+    MEDIA_ROOT: z.string().min(1).default('../.data/media'),
+    MEDIA_PUBLIC_BASE_URL: z
+      .url()
+      .default('http://127.0.0.1:3001/api/v1/media'),
     E2E_TEST_CODE: z
       .string()
       .regex(/^\d{6}$/)

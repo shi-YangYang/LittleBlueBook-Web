@@ -12,6 +12,7 @@ import {
 } from 'react';
 
 import { Icon } from './_components/icon';
+import { NoteFeed } from './_components/note-feed';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3001/api/v1';
@@ -44,17 +45,6 @@ type SessionResult = {
   } | null;
 };
 
-type Card = {
-  id: number;
-  title: string;
-  author: string;
-  likes: string;
-  cover: string;
-  height: number;
-  avatarColor: string;
-  video?: boolean;
-};
-
 const menuItems = [
   ['discover', '发现'],
   ['video', '视频'],
@@ -78,102 +68,6 @@ const channels = [
   '家居',
   '旅行',
   '视频',
-];
-
-const cards: Card[] = [
-  {
-    id: 1,
-    title: '一套真正适合通勤的轻量装备',
-    author: '蓝调生活家',
-    likes: '445',
-    cover: '/demo/cover-workbench.svg',
-    height: 328,
-    avatarColor: '#3b82f6',
-  },
-  {
-    id: 2,
-    title: '把周末留给山野，城市也可以很近',
-    author: '北纬三十度',
-    likes: '262',
-    cover: '/demo/cover-camping.svg',
-    height: 402,
-    avatarColor: '#0f766e',
-    video: true,
-  },
-  {
-    id: 3,
-    title: '机械键盘入门，先看懂这几个参数',
-    author: '硬件研究所',
-    likes: '315',
-    cover: '/demo/cover-keyboard.svg',
-    height: 294,
-    avatarColor: '#7c3aed',
-  },
-  {
-    id: 4,
-    title: '下班后的四十分钟力量训练',
-    author: '阿拓练起来',
-    likes: '411',
-    cover: '/demo/cover-training.svg',
-    height: 356,
-    avatarColor: '#ea580c',
-  },
-  {
-    id: 5,
-    title: '给桌面做一次彻底的收纳升级',
-    author: '一平米工作室',
-    likes: '2180',
-    cover: '/demo/cover-desk.svg',
-    height: 318,
-    avatarColor: '#0369a1',
-  },
-  {
-    id: 6,
-    title: '第一次夜钓，需要准备什么？',
-    author: '江边老周',
-    likes: '892',
-    cover: '/demo/cover-fishing.svg',
-    height: 390,
-    avatarColor: '#475569',
-    video: true,
-  },
-  {
-    id: 7,
-    title: '家常牛肉面，汤底这样做更醇厚',
-    author: '认真吃饭',
-    likes: '763',
-    cover: '/demo/cover-noodles.svg',
-    height: 302,
-    avatarColor: '#b45309',
-  },
-  {
-    id: 8,
-    title: '独处时最舒服的客厅灯光',
-    author: '住进理想里',
-    likes: '507',
-    cover: '/demo/cover-livingroom.svg',
-    height: 368,
-    avatarColor: '#4f46e5',
-  },
-  {
-    id: 9,
-    title: '公路车新手的第一条百公里路线',
-    author: '顺风骑行',
-    likes: '634',
-    cover: '/demo/cover-bike.svg',
-    height: 340,
-    avatarColor: '#15803d',
-    video: true,
-  },
-  {
-    id: 10,
-    title: '旧相机也能拍出有质感的街头夜景',
-    author: '慢快门',
-    likes: '1196',
-    cover: '/demo/cover-camera.svg',
-    height: 408,
-    avatarColor: '#be123c',
-  },
 ];
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -262,6 +156,7 @@ export default function Home() {
   const loginButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const authStateVersionRef = useRef(0);
+  const destinationAfterAuthRef = useRef<string | null>(null);
 
   const showComingSoon = useCallback(() => {
     setToast('功能开发中');
@@ -348,14 +243,35 @@ export default function Home() {
     setModalOpen(true);
   };
 
+  const openPublish = () => {
+    if (user) {
+      window.location.assign('/publish');
+      return;
+    }
+    destinationAfterAuthRef.current = '/publish';
+    openModal();
+  };
+
+  const continueAfterAuthentication = () => {
+    const destination = destinationAfterAuthRef.current;
+    destinationAfterAuthRef.current = null;
+    if (destination) {
+      window.location.assign(destination);
+    }
+  };
+
   useEffect(() => {
     const parameters = new URLSearchParams(window.location.search);
     if (parameters.get('login') !== '1') {
       return;
     }
 
+    if (parameters.get('next') === '/publish') {
+      destinationAfterAuthRef.current = '/publish';
+    }
     window.setTimeout(() => setModalOpen(true), 0);
     parameters.delete('login');
+    parameters.delete('next');
     const query = parameters.toString();
     window.history.replaceState(
       null,
@@ -367,6 +283,7 @@ export default function Home() {
   const closeModal = useCallback(() => {
     setModalOpen(false);
     setError('');
+    destinationAfterAuthRef.current = null;
     window.setTimeout(() => loginButtonRef.current?.focus(), 0);
   }, []);
 
@@ -480,6 +397,7 @@ export default function Home() {
         setUser(result.user);
         setModalOpen(false);
         setToast('登录成功');
+        continueAfterAuthentication();
       } else {
         authStateVersionRef.current += 1;
         setError('');
@@ -519,6 +437,7 @@ export default function Home() {
       setNickname('');
       setAcceptedTerms(false);
       setStep('verify');
+      continueAfterAuthentication();
     } catch (registerError) {
       const message = getErrorMessage(registerError);
       setError(message);
@@ -552,7 +471,13 @@ export default function Home() {
               className={`nav-item ${index === 0 ? 'active' : ''}`}
               key={label}
               type="button"
-              onClick={showComingSoon}
+              onClick={
+                label === '发布'
+                  ? openPublish
+                  : index === 0
+                    ? undefined
+                    : showComingSoon
+              }
             >
               <Icon name={icon} />
               <span>{label}</span>
@@ -619,60 +544,20 @@ export default function Home() {
               key={channel}
               type="button"
               className={index === 0 ? 'selected' : ''}
-              onClick={showComingSoon}
+              onClick={index === 0 ? undefined : showComingSoon}
             >
               {channel}
             </button>
           ))}
         </nav>
 
-        <section
-          className="feed-grid"
-          data-testid="feed-grid"
-          aria-label="推荐内容"
-        >
-          {cards.map((card) => (
-            <article className="note-card" key={card.id}>
-              <button
-                className="card-action"
-                type="button"
-                onClick={showComingSoon}
-                aria-label={`查看内容：${card.title}`}
-              >
-                <span className="cover-wrap" style={{ height: card.height }}>
-                  <Image
-                    src={card.cover}
-                    alt=""
-                    fill
-                    sizes="(min-width: 1920px) 18vw, (min-width: 1440px) 22vw, 29vw"
-                  />
-                  {card.video ? (
-                    <span className="video-badge" aria-label="视频内容">
-                      <span />
-                    </span>
-                  ) : null}
-                </span>
-                <span className="card-title">{card.title}</span>
-                <span className="card-meta">
-                  <span className="author">
-                    <span
-                      className="author-avatar"
-                      style={{ background: card.avatarColor }}
-                      aria-hidden="true"
-                    >
-                      {Array.from(card.author)[0]}
-                    </span>
-                    <span>{card.author}</span>
-                  </span>
-                  <span className="likes">
-                    <Icon name="heart" size={17} />
-                    {card.likes}
-                  </span>
-                </span>
-              </button>
-            </article>
-          ))}
-        </section>
+        <NoteFeed
+          endpoint="/notes/recommendations"
+          label="推荐内容"
+          emptyMessage="还没有笔记，发布第一篇内容吧"
+          errorMessage="推荐内容加载失败，请稍后重试"
+          onPublish={openPublish}
+        />
       </main>
 
       {toast ? (

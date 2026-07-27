@@ -10,6 +10,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import Home from './page';
 
+const navigation = vi.hoisted(() => ({
+  push: vi.fn(),
+  replace: vi.fn(),
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => navigation,
+}));
+
 type JsonResponse = {
   ok: boolean;
   json: () => Promise<unknown>;
@@ -30,12 +39,22 @@ function guestSession() {
   });
 }
 
+function emptyNotes() {
+  return response({ items: [], nextCursor: null });
+}
+
 describe('Home', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', '/');
+    navigation.push.mockReset();
+    navigation.replace.mockReset();
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => guestSession()) as unknown as typeof fetch,
+      vi.fn(async (input: string | URL | Request) =>
+        String(input).includes('/notes/recommendations')
+          ? emptyNotes()
+          : guestSession(),
+      ) as unknown as typeof fetch,
     );
   });
 
@@ -45,10 +64,10 @@ describe('Home', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders the confirmed desktop shell, menu, channels and local cards', async () => {
+  it('renders the confirmed desktop shell and a real empty note feed', async () => {
     render(<Home />);
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await screen.findByText('还没有笔记，发布第一篇内容吧');
     expect(screen.getByAltText('小蓝书')).toBeInTheDocument();
     expect(
       screen.getByRole('navigation', { name: '主要功能' }),
@@ -62,18 +81,15 @@ describe('Home', () => {
       '推荐数码汽车游戏运动健身户外穿搭美食职场情感家居旅行视频',
     );
     expect(screen.getAllByRole('button', { name: '登录' })).toHaveLength(1);
-    expect(document.querySelectorAll('.note-card')).toHaveLength(10);
+    expect(document.querySelectorAll('.note-card')).toHaveLength(0);
     expect(
-      screen.getByRole('button', {
-        name: '查看内容：一套真正适合通勤的轻量装备',
-      }),
+      screen.getByRole('button', { name: '发布笔记' }),
     ).toBeInTheDocument();
-    expect(screen.getAllByLabelText('视频内容')).toHaveLength(3);
   });
 
   it('shows the shared coming-soon feedback without navigation', async () => {
     render(<Home />);
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await screen.findByText('还没有笔记，发布第一篇内容吧');
 
     fireEvent.click(
       screen.getByRole('button', { name: '搜索，登录探索更多内容' }),
@@ -86,7 +102,7 @@ describe('Home', () => {
 
   it('enforces agreement and email validation before sending a code', async () => {
     render(<Home />);
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await screen.findByText('还没有笔记，发布第一篇内容吧');
     fireEvent.click(screen.getByRole('button', { name: '登录' }));
 
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }));
@@ -100,7 +116,7 @@ describe('Home', () => {
     fireEvent.click(screen.getByLabelText('同意用户协议与隐私政策'));
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }));
     expect(screen.getByRole('alert')).toHaveTextContent('请输入有效的邮箱地址');
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('shows sending state and starts the resend countdown after success', async () => {
@@ -111,6 +127,9 @@ describe('Home', () => {
         const url = String(input);
         if (url.endsWith('/auth/session')) {
           return Promise.resolve(guestSession());
+        }
+        if (url.includes('/notes/recommendations')) {
+          return Promise.resolve(emptyNotes());
         }
         if (url.endsWith('/auth/email-code/request')) {
           return new Promise<JsonResponse>((resolve) => {
@@ -123,7 +142,7 @@ describe('Home', () => {
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     render(<Home />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await screen.findByText('还没有笔记，发布第一篇内容吧');
     fireEvent.click(screen.getByRole('button', { name: '登录' }));
     fireEvent.change(screen.getByLabelText('邮箱'), {
       target: { value: ' User@Example.com ' },
@@ -140,8 +159,11 @@ describe('Home', () => {
       expect(screen.getByRole('button', { name: '60秒后重发' })).toBeDisabled(),
     );
     expect(screen.getByRole('status')).toHaveTextContent('验证码已发送');
-    expect(fetchMock.mock.calls[1]?.[0]).toContain('/auth/email-code/request');
-    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+    const requestCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).endsWith('/auth/email-code/request'),
+    );
+    expect(requestCall?.[0]).toContain('/auth/email-code/request');
+    expect(requestCall?.[1]).toMatchObject({
       method: 'POST',
       body: JSON.stringify({
         email: 'user@example.com',
@@ -159,6 +181,7 @@ describe('Home', () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith('/auth/session')) return guestSession();
+      if (url.includes('/notes/recommendations')) return emptyNotes();
       if (url.endsWith('/auth/email-code/verify')) {
         return response({ status: 'authenticated', user });
       }
@@ -167,7 +190,7 @@ describe('Home', () => {
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     render(<Home />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await screen.findByText('还没有笔记，发布第一篇内容吧');
     fireEvent.click(screen.getByRole('button', { name: '登录' }));
     fireEvent.change(screen.getByLabelText('邮箱'), {
       target: { value: 'user@example.com' },
@@ -203,6 +226,9 @@ describe('Home', () => {
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith('/auth/session')) return initialSessionPromise;
+      if (url.includes('/notes/recommendations')) {
+        return Promise.resolve(emptyNotes());
+      }
       if (url.endsWith('/auth/email-code/verify')) {
         return Promise.resolve(response({ status: 'authenticated', user }));
       }
@@ -211,7 +237,7 @@ describe('Home', () => {
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     render(<Home />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await screen.findByText('还没有笔记，发布第一篇内容吧');
     fireEvent.click(screen.getByRole('button', { name: '登录' }));
     fireEvent.change(screen.getByLabelText('邮箱'), {
       target: { value: 'race-login@example.com' },
@@ -244,6 +270,7 @@ describe('Home', () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith('/auth/session')) return guestSession();
+      if (url.includes('/notes/recommendations')) return emptyNotes();
       if (url.endsWith('/auth/email-code/verify')) {
         return response({ status: 'registration_required' });
       }
@@ -255,7 +282,7 @@ describe('Home', () => {
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     render(<Home />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await screen.findByText('还没有笔记，发布第一篇内容吧');
     fireEvent.click(screen.getByRole('button', { name: '登录' }));
     fireEvent.change(screen.getByLabelText('邮箱'), {
       target: { value: 'new@example.com' },
@@ -304,6 +331,9 @@ describe('Home', () => {
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith('/auth/session')) return initialSessionPromise;
+      if (url.includes('/notes/recommendations')) {
+        return Promise.resolve(emptyNotes());
+      }
       if (url.endsWith('/auth/email-code/verify')) {
         return Promise.resolve(response({ status: 'registration_required' }));
       }
@@ -315,7 +345,7 @@ describe('Home', () => {
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     render(<Home />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await screen.findByText('还没有笔记，发布第一篇内容吧');
     fireEvent.click(screen.getByRole('button', { name: '登录' }));
     fireEvent.change(screen.getByLabelText('邮箱'), {
       target: { value: 'race-registration@example.com' },
@@ -347,16 +377,18 @@ describe('Home', () => {
   it('restores an authenticated session without opening the modal', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        response({
-          authenticated: true,
-          user: {
-            id: 'user-3',
-            email: 'returning@example.com',
-            nickname: '归航',
-          },
-          pendingRegistration: false,
-        }),
+      vi.fn(async (input: string | URL | Request) =>
+        String(input).includes('/notes/recommendations')
+          ? emptyNotes()
+          : response({
+              authenticated: true,
+              user: {
+                id: 'user-3',
+                email: 'returning@example.com',
+                nickname: '归航',
+              },
+              pendingRegistration: false,
+            }),
       ) as unknown as typeof fetch,
     );
 
@@ -380,13 +412,15 @@ describe('Home', () => {
   it('restores the profile step for an unexpired registration credential', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        response({
-          authenticated: false,
-          user: null,
-          pendingRegistration: true,
-          pendingEmail: 'pending@example.com',
-        }),
+      vi.fn(async (input: string | URL | Request) =>
+        String(input).includes('/notes/recommendations')
+          ? emptyNotes()
+          : response({
+              authenticated: false,
+              user: null,
+              pendingRegistration: true,
+              pendingEmail: 'pending@example.com',
+            }),
       ) as unknown as typeof fetch,
     );
 
@@ -403,13 +437,15 @@ describe('Home', () => {
   it('returns an expired registration credential to email verification', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        response({
-          authenticated: false,
-          user: null,
-          pendingRegistration: false,
-          registrationExpired: true,
-        }),
+      vi.fn(async (input: string | URL | Request) =>
+        String(input).includes('/notes/recommendations')
+          ? emptyNotes()
+          : response({
+              authenticated: false,
+              user: null,
+              pendingRegistration: false,
+              registrationExpired: true,
+            }),
       ) as unknown as typeof fetch,
     );
 
@@ -429,6 +465,7 @@ describe('Home', () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith('/auth/session')) return guestSession();
+      if (url.includes('/notes/recommendations')) return emptyNotes();
       if (url.endsWith('/auth/email-code/verify')) {
         return response({ status: 'registration_required' });
       }
@@ -447,7 +484,7 @@ describe('Home', () => {
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     render(<Home />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await screen.findByText('还没有笔记，发布第一篇内容吧');
     fireEvent.click(screen.getByRole('button', { name: '登录' }));
     fireEvent.change(screen.getByLabelText('邮箱'), {
       target: { value: 'expired@example.com' },
@@ -474,7 +511,7 @@ describe('Home', () => {
 
   it('keeps overlay clicks inert, closes on Escape and restores focus', async () => {
     render(<Home />);
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await screen.findByText('还没有笔记，发布第一篇内容吧');
     const login = screen.getByRole('button', { name: '登录' });
     fireEvent.click(login);
     const dialog = screen.getByRole('dialog');
@@ -501,6 +538,7 @@ describe('Home', () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith('/auth/session')) return guestSession();
+      if (url.includes('/notes/recommendations')) return emptyNotes();
       if (url.endsWith('/auth/email-code/verify')) {
         return response(
           {
@@ -517,7 +555,7 @@ describe('Home', () => {
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     render(<Home />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await screen.findByText('还没有笔记，发布第一篇内容吧');
     fireEvent.click(screen.getByRole('button', { name: '登录' }));
     fireEvent.change(screen.getByLabelText('邮箱'), {
       target: { value: 'user@example.com' },

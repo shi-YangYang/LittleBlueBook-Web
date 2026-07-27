@@ -39,6 +39,11 @@ describe('backend application', () => {
       '/api/v1/auth/registration/complete',
     );
     expect(response.body.paths).toHaveProperty('/api/v1/profile/me');
+    expect(response.body.paths).toHaveProperty('/api/v1/notes');
+    expect(response.body.paths).toHaveProperty('/api/v1/notes/recommendations');
+    expect(response.body.paths).toHaveProperty('/api/v1/notes/mine');
+    expect(response.body.paths).toHaveProperty('/api/v1/notes/{noteId}');
+    expect(response.body.paths).toHaveProperty('/api/v1/media/{objectKey}');
   });
 
   it('does not create business routes in the API namespace', async () => {

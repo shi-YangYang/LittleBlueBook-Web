@@ -32,10 +32,13 @@ RUN pnpm --filter backend db:generate \
 FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS runner
 ENV NODE_ENV=production
 ENV PORT=3001
+ENV MEDIA_ROOT=/app/media
 WORKDIR /app/backend
 
 RUN addgroup --system --gid 1001 nestjs \
-  && adduser --system --uid 1001 --ingroup nestjs nestjs
+  && adduser --system --uid 1001 --ingroup nestjs nestjs \
+  && mkdir -p /app/media \
+  && chown nestjs:nestjs /app/media
 
 COPY --from=production-dependencies --chown=nestjs:nestjs /workspace/node_modules /app/node_modules
 COPY --from=production-dependencies --chown=nestjs:nestjs /workspace/backend/node_modules ./node_modules
@@ -43,5 +46,6 @@ COPY --from=builder --chown=nestjs:nestjs /workspace/backend/dist ./dist
 COPY --from=builder --chown=nestjs:nestjs /workspace/backend/package.json ./package.json
 
 USER nestjs
+VOLUME ["/app/media"]
 EXPOSE 3001
 CMD ["node", "dist/main.js"]
