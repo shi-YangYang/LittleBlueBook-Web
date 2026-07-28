@@ -7,13 +7,16 @@ export type NoteCardData = {
     height: number;
   };
   author: {
+    id: string;
     nickname: string;
     avatar: {
       type: 'initial';
       value: string;
     };
   };
-  likes: 0;
+  likes: number;
+  liked: boolean;
+  canLike: boolean;
 };
 
 export type NotePageData = {
@@ -38,10 +41,41 @@ export type NoteDetailData = {
     height: number;
   }>;
   interactions: {
-    likes: 0;
-    favorites: 0;
-    comments: 0;
+    likes: number;
+    favorites: number;
+    comments: number;
   };
+  viewer: {
+    authenticated: boolean;
+    isAuthor: boolean;
+    liked: boolean;
+    favorited: boolean;
+    followingAuthor: boolean;
+    canLike: boolean;
+    canFollow: boolean;
+  };
+};
+
+export type NoteCommentData = {
+  id: string;
+  content: string;
+  createdAt: string;
+  author: {
+    id: string;
+    nickname: string;
+    avatar: {
+      type: 'initial';
+      value: string;
+    };
+  };
+  isAuthor: boolean;
+  canDelete: boolean;
+};
+
+export type CommentPageData = {
+  items: NoteCommentData[];
+  nextCursor: string | null;
+  total: number;
 };
 
 const NOTE_DETAIL_SOURCE_KEY = 'littlebluebook:note-detail-source';

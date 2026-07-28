@@ -119,11 +119,17 @@ export class NotesController {
   @ApiOkResponse({ description: 'A cursor-paginated channel note feed' })
   @ApiNotFoundResponse({ description: 'The channel is missing or disabled' })
   async channel(
+    @Req() request: Request,
     @Param('channelCode') channelCode: string,
     @Query() query: ListNotesDto,
   ): Promise<{ data: NotePage }> {
     return {
-      data: await this.notes.channel(channelCode, query.cursor, query.limit),
+      data: await this.notes.channel(
+        readCookie(request, SESSION_COOKIE_NAME),
+        channelCode,
+        query.cursor,
+        query.limit,
+      ),
     };
   }
 
@@ -131,10 +137,15 @@ export class NotesController {
   @ApiOperation({ summary: 'List public notes newest first' })
   @ApiOkResponse({ description: 'A cursor-paginated public note feed' })
   async recommendations(
+    @Req() request: Request,
     @Query() query: ListNotesDto,
   ): Promise<{ data: NotePage }> {
     return {
-      data: await this.notes.recommendations(query.cursor, query.limit),
+      data: await this.notes.recommendations(
+        readCookie(request, SESSION_COOKIE_NAME),
+        query.cursor,
+        query.limit,
+      ),
     };
   }
 
@@ -148,6 +159,40 @@ export class NotesController {
   ): Promise<{ data: NotePage }> {
     return {
       data: await this.notes.mine(
+        readCookie(request, SESSION_COOKIE_NAME),
+        query.cursor,
+        query.limit,
+      ),
+    };
+  }
+
+  @Get('favorites')
+  @ApiOperation({ summary: 'List notes favorited by the current user' })
+  @ApiOkResponse({ description: 'Notes ordered by favorite time descending' })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  async favorites(
+    @Req() request: Request,
+    @Query() query: ListNotesDto,
+  ): Promise<{ data: NotePage }> {
+    return {
+      data: await this.notes.favorites(
+        readCookie(request, SESSION_COOKIE_NAME),
+        query.cursor,
+        query.limit,
+      ),
+    };
+  }
+
+  @Get('liked')
+  @ApiOperation({ summary: 'List notes liked by the current user' })
+  @ApiOkResponse({ description: 'Notes ordered by like time descending' })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  async liked(
+    @Req() request: Request,
+    @Query() query: ListNotesDto,
+  ): Promise<{ data: NotePage }> {
+    return {
+      data: await this.notes.liked(
         readCookie(request, SESSION_COOKIE_NAME),
         query.cursor,
         query.limit,
@@ -202,7 +247,15 @@ export class NotesController {
     },
   })
   @ApiNotFoundResponse({ description: 'The note does not exist' })
-  async detail(@Param('noteId') noteId: string): Promise<{ data: NoteDetail }> {
-    return { data: await this.notes.detail(noteId) };
+  async detail(
+    @Req() request: Request,
+    @Param('noteId') noteId: string,
+  ): Promise<{ data: NoteDetail }> {
+    return {
+      data: await this.notes.detail(
+        readCookie(request, SESSION_COOKIE_NAME),
+        noteId,
+      ),
+    };
   }
 }

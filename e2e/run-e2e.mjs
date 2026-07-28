@@ -247,6 +247,24 @@ async function seedUsersAndSessions() {
       '内容蓝友',
       '0000000105',
     ],
+    [
+      '00000000-0000-4000-8000-000000000106',
+      'social-author@example.com',
+      '互动作者',
+      '0000000106',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000107',
+      'social-viewer@example.com',
+      '互动蓝友',
+      '0000000107',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000108',
+      'social-third@example.com',
+      '互动访客',
+      '0000000108',
+    ],
   ];
   const values = users
     .map(
@@ -282,12 +300,18 @@ async function seedUsersAndSessions() {
 
   const multiDeviceUserId = users[3][0];
   const contentUserId = users[4][0];
+  const socialAuthorUserId = users[5][0];
+  const socialViewerUserId = users[6][0];
+  const socialThirdUserId = users[7][0];
   const sessions = [
     ['spec002-device-a-session', multiDeviceUserId],
     ['spec002-device-b-session', multiDeviceUserId],
     ['spec003-profile-session', multiDeviceUserId],
     ['spec003-logout-session', multiDeviceUserId],
     ['spec004-content-session', contentUserId],
+    ['spec007-viewer-session', socialViewerUserId],
+    ['spec007-author-session', socialAuthorUserId],
+    ['spec007-third-session', socialThirdUserId],
   ];
   for (const [sessionId, userId] of sessions) {
     const key =
@@ -356,6 +380,17 @@ async function verifyLegacyMigrations() {
       'prisma',
       'migrations',
       '20260727000100_add_note_channels',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const socialSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260728000100_add_social_interactions',
       'migration.sql',
     ),
     'utf8',
@@ -445,6 +480,7 @@ async function verifyLegacyMigrations() {
     '-c',
     channelSql,
   );
+  await psql('-d', migrationDatabase, '-v', 'ON_ERROR_STOP=1', '-c', socialSql);
   await psql(
     '-d',
     migrationDatabase,
@@ -495,6 +531,29 @@ async function verifyLegacyMigrations() {
           AND indexname = 'notes_channelId_createdAt_id_idx'
       ) THEN
         RAISE EXCEPTION 'SPEC-006 channel cursor index missing';
+      END IF;
+      IF (SELECT count(*) FROM "notes"
+          WHERE "id" = '00000000-0000-4000-8000-000000000098') <> 1 THEN
+        RAISE EXCEPTION 'SPEC-007 migration changed a legacy note';
+      END IF;
+      IF (SELECT count(*) FROM "note_likes") <> 0
+         OR (SELECT count(*) FROM "note_favorites") <> 0
+         OR (SELECT count(*) FROM "note_comments") <> 0
+         OR (SELECT count(*) FROM "user_follows") <> 0 THEN
+        RAISE EXCEPTION 'SPEC-007 migration created fake interactions';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'user_follows_no_self_check'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-007 self-follow constraint missing';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE tablename = 'note_comments'
+          AND indexname = 'note_comments_noteId_createdAt_id_idx'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-007 comment cursor index missing';
       END IF;
     END $$;`,
   );
@@ -603,8 +662,12 @@ async function main() {
   });
   await seedUsersAndSessions();
 
-  backendProcess = startPnpm(
-    ['--filter', 'backend', 'exec', 'tsx', 'src/main.ts'],
+  await runPnpm(['--filter', 'backend', 'build'], {
+    env: applicationEnvironment,
+  });
+  backendProcess = start(
+    process.execPath,
+    [path.join('backend', 'dist', 'main.js')],
     applicationEnvironment,
   );
   await waitFor(`http://127.0.0.1:${backendPort}/health/ready`);

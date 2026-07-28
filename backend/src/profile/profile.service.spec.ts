@@ -19,11 +19,15 @@ describe('ProfileService', () => {
     const prisma = {
       user: {
         findUnique: jest.fn(async () => ({
+          id: 'internal-id',
           nickname: '蓝海',
           littleBlueBookId: '0123456789',
           gender,
         })),
       },
+      userFollow: { count: jest.fn(async () => 2) },
+      noteLike: { count: jest.fn(async () => 3) },
+      noteFavorite: { count: jest.fn(async () => 4) },
     };
     const service = new ProfileService(
       auth as unknown as AuthService,
@@ -36,14 +40,15 @@ describe('ProfileService', () => {
       gender: label,
       avatar: { type: 'initial', value: '蓝' },
       stats: {
-        following: 0,
-        followers: 0,
-        receivedLikesAndFavorites: 0,
+        following: 2,
+        followers: 2,
+        receivedLikesAndFavorites: 7,
       },
     });
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
       where: { id: 'internal-id' },
       select: {
+        id: true,
         nickname: true,
         littleBlueBookId: true,
         gender: true,

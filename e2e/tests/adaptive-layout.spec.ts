@@ -30,10 +30,13 @@ function feedNote(index: number) {
     title: `自适应布局笔记 ${index}`,
     cover: { url: portrait, width: 300, height: 400 },
     author: {
+      id: `10000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
       nickname: '自适应蓝友',
       avatar: { type: 'initial', value: '自' },
     },
     likes: 0,
+    liked: false,
+    canLike: true,
   };
 }
 
@@ -383,11 +386,26 @@ test('keeps detail scrolling internal and restores the feed position on Back', a
           ).join('\n'),
           createdAt: '2026-07-27T00:00:00.000Z',
           author: {
+            id: '10000000-0000-4000-8000-000000000001',
             nickname: '自适应蓝友',
             avatar: { type: 'initial', value: '自' },
           },
+          channel: {
+            code: 'digital',
+            name: '数码',
+            navigable: true,
+          },
           images: [{ url: portrait, width: 300, height: 400 }],
           interactions: { likes: 0, favorites: 0, comments: 0 },
+          viewer: {
+            authenticated: true,
+            isAuthor: false,
+            liked: false,
+            favorited: false,
+            followingAuthor: false,
+            canLike: true,
+            canFollow: true,
+          },
         },
       },
     });

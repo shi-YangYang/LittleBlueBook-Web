@@ -312,8 +312,9 @@ test('publishes ordered images and shows the same real note everywhere', async (
     'src',
     /\.png$/,
   );
-  await page.getByLabel('点赞 0，功能正在开发中').click();
-  await expect(page.getByRole('status')).toHaveText('功能正在开发中');
+  await expect(
+    page.getByRole('button', { name: '自己的笔记不可点赞，当前 0' }),
+  ).toBeDisabled();
 
   const detailUrl = page.url();
   await page.reload();
@@ -321,10 +322,16 @@ test('publishes ordered images and shows the same real note everywhere', async (
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
 
   await page.goto('/');
-  const publicCard = page.getByRole('link', { name: `查看笔记：${title}` });
+  const publicCard = page.locator('.note-card').filter({
+    has: page.getByRole('link', { name: `查看笔记：${title}` }),
+  });
   await expect(publicCard).toBeVisible();
   await expect(publicCard).toContainText('内容蓝友');
-  await expect(publicCard.getByLabel('点赞 0')).toBeVisible();
+  await expect(
+    publicCard.getByRole('button', {
+      name: '自己的笔记不可点赞，当前 0',
+    }),
+  ).toBeDisabled();
 
   await page.goto('/profile');
   await expect(page.getByRole('heading', { name: '内容蓝友' })).toBeVisible();

@@ -154,6 +154,18 @@ class TestPrisma {
       },
     ),
   };
+
+  readonly userFollow = {
+    count: jest.fn(async () => 0),
+  };
+
+  readonly noteLike = {
+    count: jest.fn(async () => 0),
+  };
+
+  readonly noteFavorite = {
+    count: jest.fn(async () => 0),
+  };
 }
 
 function cookieValue(

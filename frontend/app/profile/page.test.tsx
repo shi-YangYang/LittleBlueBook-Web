@@ -54,7 +54,7 @@ describe('ProfilePage', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: string | URL | Request) =>
-        String(input).includes('/notes/mine')
+        String(input).includes('/notes/')
           ? response({ items: [], nextCursor: null })
           : response(profile),
       ) as unknown as typeof fetch,
@@ -111,14 +111,14 @@ describe('ProfilePage', () => {
 
     fireEvent.click(favorites);
     expect(favorites).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('还没有收藏内容')).toBeVisible();
+    expect(await screen.findByText('还没有收藏内容')).toBeVisible();
 
     fireEvent.keyDown(favorites, { key: 'ArrowRight' });
     expect(likes).toHaveFocus();
     expect(likes).toHaveAttribute('aria-selected', 'false');
     fireEvent.keyDown(likes, { key: 'Enter' });
     expect(likes).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('还没有点赞内容')).toBeVisible();
+    expect(await screen.findByText('还没有点赞内容')).toBeVisible();
   });
 
   it('closes the settings menu on Escape and restores trigger focus', async () => {
