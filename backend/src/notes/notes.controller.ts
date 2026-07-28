@@ -20,6 +20,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
@@ -47,7 +48,7 @@ export class NotesController {
       limits: {
         files: 9,
         fileSize: 10 * 1024 * 1024,
-        fields: 3,
+        fields: 4,
         fieldSize: 16 * 1024,
       },
     }),
@@ -57,10 +58,23 @@ export class NotesController {
   @ApiBody({
     schema: {
       type: 'object',
-      required: ['title', 'content', 'clientRequestId', 'images'],
+      required: [
+        'title',
+        'content',
+        'channelCode',
+        'clientRequestId',
+        'images',
+      ],
       properties: {
         title: { type: 'string', minLength: 1, maxLength: 50 },
         content: { type: 'string', minLength: 1, maxLength: 2000 },
+        channelCode: {
+          type: 'string',
+          minLength: 2,
+          maxLength: 32,
+          pattern: '^[a-z][a-z0-9-]{1,31}$',
+          example: 'digital',
+        },
         clientRequestId: { type: 'string', format: 'uuid' },
         images: {
           type: 'array',
@@ -86,6 +100,30 @@ export class NotesController {
         input,
         files ?? [],
       ),
+    };
+  }
+
+  @Get('channels/:channelCode')
+  @ApiOperation({ summary: 'List public notes in one enabled channel' })
+  @ApiParam({
+    name: 'channelCode',
+    description: 'Stable public channel code',
+    example: 'digital',
+    schema: {
+      type: 'string',
+      pattern: '^[a-z][a-z0-9-]{1,31}$',
+      minLength: 2,
+      maxLength: 32,
+    },
+  })
+  @ApiOkResponse({ description: 'A cursor-paginated channel note feed' })
+  @ApiNotFoundResponse({ description: 'The channel is missing or disabled' })
+  async channel(
+    @Param('channelCode') channelCode: string,
+    @Query() query: ListNotesDto,
+  ): Promise<{ data: NotePage }> {
+    return {
+      data: await this.notes.channel(channelCode, query.cursor, query.limit),
     };
   }
 
@@ -119,7 +157,50 @@ export class NotesController {
 
   @Get(':noteId')
   @ApiOperation({ summary: 'Read a public note detail' })
-  @ApiOkResponse({ description: 'The complete public note detail' })
+  @ApiOkResponse({
+    description:
+      'The complete public note detail, including its public channel',
+    schema: {
+      type: 'object',
+      required: ['data'],
+      properties: {
+        data: {
+          type: 'object',
+          required: [
+            'id',
+            'title',
+            'content',
+            'createdAt',
+            'author',
+            'channel',
+            'images',
+            'interactions',
+          ],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            title: { type: 'string' },
+            content: { type: 'string' },
+            createdAt: { type: 'string', format: 'date-time' },
+            author: { type: 'object' },
+            channel: {
+              type: 'object',
+              nullable: true,
+              description:
+                'Null for an internal legacy channel; navigable is false when a public channel is disabled',
+              required: ['code', 'name', 'navigable'],
+              properties: {
+                code: { type: 'string', example: 'digital' },
+                name: { type: 'string', example: '数码' },
+                navigable: { type: 'boolean' },
+              },
+            },
+            images: { type: 'array', items: { type: 'object' } },
+            interactions: { type: 'object' },
+          },
+        },
+      },
+    },
+  })
   @ApiNotFoundResponse({ description: 'The note does not exist' })
   async detail(@Param('noteId') noteId: string): Promise<{ data: NoteDetail }> {
     return { data: await this.notes.detail(noteId) };

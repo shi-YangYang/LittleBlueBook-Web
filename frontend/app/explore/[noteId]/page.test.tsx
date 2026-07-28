@@ -29,6 +29,7 @@ const note = {
     nickname: '蓝书作者',
     avatar: { type: 'initial', value: '蓝' },
   },
+  channel: { code: 'digital', name: '数码', navigable: true },
   images: [
     { url: 'https://media.example.test/one.png', width: 100, height: 120 },
     { url: 'https://media.example.test/two.webp', width: 90, height: 80 },
@@ -94,12 +95,40 @@ describe('NoteDetailPage', () => {
     expect(document.querySelector('.detail-copy script')).toBeNull();
     expect(screen.getByText('1小时前')).toBeVisible();
     expect(screen.getByText('共 0 条评论')).toBeVisible();
+    expect(screen.getByRole('link', { name: '数码' })).toHaveAttribute(
+      'href',
+      '/?channel=digital',
+    );
     expect(screen.getByLabelText('点赞 0，功能正在开发中')).toBeVisible();
     expect(screen.getByLabelText('收藏 0，功能正在开发中')).toBeVisible();
     expect(screen.getByAltText('笔记图片 1')).toHaveAttribute(
       'src',
       note.images[0].url,
     );
+  });
+
+  it('hides the internal legacy channel and keeps a disabled label inert', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response({ ...note, channel: null }))
+      .mockResolvedValueOnce(
+        response({
+          ...note,
+          channel: { code: 'digital', name: '数码', navigable: false },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+    const first = render(<NoteDetailView noteId={note.id} />);
+    await screen.findByRole('heading', { name: note.title });
+    expect(screen.queryByText('数码')).toBeNull();
+
+    first.unmount();
+    render(<NoteDetailView noteId={note.id} />);
+    expect(await screen.findByText('数码')).toHaveClass(
+      'detail-channel-tag',
+      'disabled',
+    );
+    expect(screen.queryByRole('link', { name: '数码' })).toBeNull();
   });
 
   it('supports button and keyboard carousel bounds', async () => {

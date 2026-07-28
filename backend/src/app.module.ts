@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
 import { AuthModule } from './auth/auth.module.js';
+import { ChannelsModule } from './channels/channels.module.js';
 import { validateEnvironment } from './config/environment.js';
 import { HealthModule } from './health/health.module.js';
 import { MediaModule } from './media/media.module.js';
@@ -16,6 +17,7 @@ import { ProfileModule } from './profile/profile.module.js';
       validate: validateEnvironment,
     }),
     AuthModule,
+    ChannelsModule,
     HealthModule,
     MediaModule,
     NotesModule,

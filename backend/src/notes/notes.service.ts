@@ -3,6 +3,7 @@ import { Buffer } from 'node:buffer';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 
 import { AuthService } from '../auth/auth.service.js';
+import { ChannelsService } from '../channels/channels.service.js';
 import { ApiException } from '../common/api-exception.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
@@ -23,6 +24,7 @@ import type {
 type CursorValue = {
   createdAt: string;
   id: string;
+  scope: string;
 };
 
 const UUID_PATTERN =
@@ -43,6 +45,7 @@ return 1
 export class NotesService {
   constructor(
     @Inject(AuthService) private readonly auth: AuthService,
+    @Inject(ChannelsService) private readonly channels: ChannelsService,
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(ImageValidatorService)
     private readonly imageValidator: ImageValidatorService,
@@ -52,17 +55,15 @@ export class NotesService {
 
   async publish(
     sessionId: string | undefined,
-    input: { title: string; content: string; clientRequestId: string },
+    input: {
+      title: string;
+      content: string;
+      channelCode: string;
+      clientRequestId: string;
+    },
     files: UploadedMemoryFile[],
   ): Promise<PublishResult> {
     const user = await this.requireUser(sessionId);
-    const title = this.validateText(input.title, 50, '标题', 'TITLE_INVALID');
-    const content = this.validateText(
-      input.content,
-      2000,
-      '正文',
-      'CONTENT_INVALID',
-    );
     const existing = await this.prisma.note.findUnique({
       where: {
         authorId_clientRequestId: {
@@ -78,6 +79,14 @@ export class NotesService {
         createdAt: existing.createdAt.toISOString(),
       };
     }
+    const title = this.validateText(input.title, 50, '标题', 'TITLE_INVALID');
+    const content = this.validateText(
+      input.content,
+      2000,
+      '正文',
+      'CONTENT_INVALID',
+    );
+    const channel = await this.channels.requirePublishable(input.channelCode);
     const reservation = await this.redis.eval(
       RESERVE_PUBLISH_RATE_SCRIPT,
       [`notes:publish:rate:${user.id}`],
@@ -98,6 +107,7 @@ export class NotesService {
       const note = await this.prisma.note.create({
         data: {
           authorId: user.id,
+          channelId: channel.id,
           title,
           content,
           clientRequestId: input.clientRequestId,
@@ -142,7 +152,23 @@ export class NotesService {
     cursor: string | undefined,
     limit: number,
   ): Promise<NotePage> {
-    return this.list(undefined, cursor, limit);
+    return this.list({ scope: 'recommendations' }, cursor, limit);
+  }
+
+  async channel(
+    channelCode: string,
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<NotePage> {
+    const channel = await this.channels.requirePublic(channelCode);
+    return this.list(
+      {
+        channelId: channel.id,
+        scope: `channel:${channel.code}`,
+      },
+      cursor,
+      limit,
+    );
   }
 
   async mine(
@@ -151,7 +177,11 @@ export class NotesService {
     limit: number,
   ): Promise<NotePage> {
     const user = await this.requireUser(sessionId);
-    return this.list(user.id, cursor, limit);
+    return this.list(
+      { authorId: user.id, scope: `mine:${user.id}` },
+      cursor,
+      limit,
+    );
   }
 
   async detail(noteId: string): Promise<NoteDetail> {
@@ -166,6 +196,14 @@ export class NotesService {
         content: true,
         createdAt: true,
         author: { select: { nickname: true } },
+        channel: {
+          select: {
+            code: true,
+            name: true,
+            enabled: true,
+            isPublic: true,
+          },
+        },
         images: {
           orderBy: { order: 'asc' },
           select: {
@@ -186,6 +224,13 @@ export class NotesService {
       content: note.content,
       createdAt: note.createdAt.toISOString(),
       author: this.author(note.author.nickname),
+      channel: note.channel.isPublic
+        ? {
+            code: note.channel.code,
+            name: note.channel.name,
+            navigable: note.channel.enabled,
+          }
+        : null,
       images: note.images.map((image) => ({
         url: this.media.publicUrl(image.objectKey),
         width: image.width,
@@ -196,7 +241,11 @@ export class NotesService {
   }
 
   private async list(
-    authorId: string | undefined,
+    filter: {
+      authorId?: string;
+      channelId?: string;
+      scope: string;
+    },
     cursorInput: string | undefined,
     limit: number,
   ): Promise<NotePage> {
@@ -208,7 +257,7 @@ export class NotesService {
         '分页参数无效',
       );
     }
-    const cursor = this.decodeCursor(cursorInput);
+    const cursor = this.decodeCursor(cursorInput, filter.scope);
     const cursorWhere = cursor
       ? {
           OR: [
@@ -222,7 +271,8 @@ export class NotesService {
       : {};
     const notes = await this.prisma.note.findMany({
       where: {
-        ...(authorId ? { authorId } : {}),
+        ...(filter.authorId ? { authorId: filter.authorId } : {}),
+        ...(filter.channelId ? { channelId: filter.channelId } : {}),
         ...cursorWhere,
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -254,6 +304,7 @@ export class NotesService {
           ? this.encodeCursor({
               createdAt: last.createdAt.toISOString(),
               id: last.id,
+              scope: filter.scope,
             })
           : null,
     };
@@ -334,7 +385,10 @@ export class NotesService {
     return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
   }
 
-  private decodeCursor(cursor: string | undefined): CursorValue | null {
+  private decodeCursor(
+    cursor: string | undefined,
+    expectedScope: string,
+  ): CursorValue | null {
     if (!cursor) {
       return null;
     }
@@ -349,11 +403,16 @@ export class NotesService {
         typeof parsed.createdAt !== 'string' ||
         Number.isNaN(Date.parse(parsed.createdAt)) ||
         typeof parsed.id !== 'string' ||
-        !UUID_PATTERN.test(parsed.id)
+        !UUID_PATTERN.test(parsed.id) ||
+        parsed.scope !== expectedScope
       ) {
         throw new Error('invalid');
       }
-      return { createdAt: parsed.createdAt, id: parsed.id };
+      return {
+        createdAt: parsed.createdAt,
+        id: parsed.id,
+        scope: parsed.scope,
+      };
     } catch {
       throw new ApiException(
         HttpStatus.BAD_REQUEST,

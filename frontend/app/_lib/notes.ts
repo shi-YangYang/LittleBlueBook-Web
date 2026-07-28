@@ -27,6 +27,11 @@ export type NoteDetailData = {
   content: string;
   createdAt: string;
   author: NoteCardData['author'];
+  channel: {
+    code: string;
+    name: string;
+    navigable: boolean;
+  } | null;
   images: Array<{
     url: string;
     width: number;

@@ -26,6 +26,8 @@ type NoteFeedProps = {
   onUnauthorized?: () => void;
 };
 
+const INITIAL_LOADING_MINIMUM_MS = 300;
+
 export function NoteFeed({
   endpoint,
   label,
@@ -68,6 +70,7 @@ export function NoteFeed({
     let active = true;
     void Promise.resolve().then(async () => {
       if (!active) return;
+      const loadingStartedAt = Date.now();
       setLoading(true);
       setInitialError(false);
       setMoreError(false);
@@ -81,6 +84,13 @@ export function NoteFeed({
       } catch {
         if (active) setInitialError(true);
       } finally {
+        const remainingLoadingTime =
+          INITIAL_LOADING_MINIMUM_MS - (Date.now() - loadingStartedAt);
+        if (remainingLoadingTime > 0) {
+          await new Promise((resolve) =>
+            window.setTimeout(resolve, remainingLoadingTime),
+          );
+        }
         if (active) setLoading(false);
       }
     });

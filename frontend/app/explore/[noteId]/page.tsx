@@ -251,6 +251,20 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
             <div className="detail-copy">
               <h1>{note.title}</h1>
               <p>{note.content}</p>
+              {note.channel ? (
+                note.channel.navigable ? (
+                  <Link
+                    className="detail-channel-tag"
+                    href={`/?channel=${encodeURIComponent(note.channel.code)}`}
+                  >
+                    {note.channel.name}
+                  </Link>
+                ) : (
+                  <span className="detail-channel-tag disabled">
+                    {note.channel.name}
+                  </span>
+                )
+              ) : null}
               <time dateTime={note.createdAt}>
                 {formatNoteTime(note.createdAt)}
               </time>

@@ -48,10 +48,15 @@ async function requestLoginCode(page: Page, email: string): Promise<void> {
   await page.getByRole('button', { name: '登录/注册' }).click();
 }
 
-function noteMultipart(clientRequestId: string, title: string) {
+function noteMultipart(
+  clientRequestId: string,
+  title: string,
+  channelCode = 'digital',
+) {
   return {
     title,
     content: '接口幂等正文',
+    channelCode,
     clientRequestId,
     images: {
       name: 'safe.png',
@@ -65,10 +70,11 @@ async function publishThroughApi(
   request: APIRequestContext,
   clientRequestId: string,
   title: string,
+  channelCode = 'digital',
 ) {
   return request.post(`${apiUrl}/notes`, {
     headers: { Cookie: `lbb_session=${contentSession}` },
-    multipart: noteMultipart(clientRequestId, title),
+    multipart: noteMultipart(clientRequestId, title, channelCode),
   });
 }
 
@@ -279,6 +285,8 @@ test('publishes ordered images and shows the same real note everywhere', async (
   await expect(page.getByText('封面', { exact: true })).toBeVisible();
   await page.getByLabel('标题').fill(title);
   await page.getByLabel('正文').fill('第一行正文\n第二行 #普通文字');
+  await page.getByRole('button', { name: '选择频道' }).click();
+  await page.getByRole('radio', { name: '数码' }).click();
   await page.getByRole('button', { name: '添加话题' }).click();
   await expect(page.getByRole('status')).toHaveText('功能正在开发中');
 
@@ -292,6 +300,7 @@ test('publishes ordered images and shows the same real note everywhere', async (
   await expect(page).toHaveURL(/\/explore\/[0-9a-f-]{36}$/);
 
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await expect(page.getByRole('link', { name: '数码' })).toBeVisible();
   await expect(page.getByText('第一行正文')).toBeVisible();
   await expect(page.getByText('内容蓝友')).toBeVisible();
   await expect(page.getByAltText('笔记图片 1')).toHaveAttribute(
@@ -569,6 +578,7 @@ test('enforces authentication, real media validation and idempotency at the API 
     multipart: {
       title: '伪造图片',
       content: '文件扩展名和声明类型不能作为唯一依据',
+      channelCode: 'digital',
       clientRequestId: randomUUID(),
       images: {
         name: 'not-really-an-image.png',
@@ -583,7 +593,12 @@ test('enforces authentication, real media validation and idempotency at the API 
   const clientRequestId = randomUUID();
   const title = `幂等笔记-${Date.now()}`;
   const first = await publishThroughApi(request, clientRequestId, title);
-  const second = await publishThroughApi(request, clientRequestId, title);
+  const second = await publishThroughApi(
+    request,
+    clientRequestId,
+    `${title}-改参`,
+    'automotive',
+  );
   expect(first.status()).toBe(201);
   expect(second.status()).toBe(201);
   const firstBody = await first.json();
