@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { markNoteDetailSource } from '../../_lib/notes';
@@ -26,6 +32,7 @@ const note = {
   content: '<script>alert(1)</script>\n第二行',
   createdAt: '2026-07-26T11:00:00.000Z',
   author: {
+    id: '00000000-0000-4000-8000-000000000099',
     nickname: '蓝书作者',
     avatar: { type: 'initial', value: '蓝' },
   },
@@ -35,6 +42,21 @@ const note = {
     { url: 'https://media.example.test/two.webp', width: 90, height: 80 },
   ],
   interactions: { likes: 0, favorites: 0, comments: 0 },
+  viewer: {
+    authenticated: false,
+    isAuthor: false,
+    liked: false,
+    favorited: false,
+    followingAuthor: false,
+    canLike: true,
+    canFollow: true,
+  },
+};
+
+const emptyComments = {
+  items: [],
+  nextCursor: null,
+  total: 0,
 };
 
 describe('formatNoteTime', () => {
@@ -71,7 +93,11 @@ describe('NoteDetailPage', () => {
     );
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => response(note)) as unknown as typeof fetch,
+      vi.fn(async (input: string | URL | Request) =>
+        String(input).includes('/comments')
+          ? response(emptyComments)
+          : response(note),
+      ) as unknown as typeof fetch,
     );
   });
 
@@ -99,8 +125,8 @@ describe('NoteDetailPage', () => {
       'href',
       '/?channel=digital',
     );
-    expect(screen.getByLabelText('点赞 0，功能正在开发中')).toBeVisible();
-    expect(screen.getByLabelText('收藏 0，功能正在开发中')).toBeVisible();
+    expect(screen.getByLabelText('点赞，当前 0')).toBeVisible();
+    expect(screen.getByLabelText('收藏，当前 0')).toBeVisible();
     expect(screen.getByAltText('笔记图片 1')).toHaveAttribute(
       'src',
       note.images[0].url,
@@ -108,15 +134,17 @@ describe('NoteDetailPage', () => {
   });
 
   it('hides the internal legacy channel and keeps a disabled label inert', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(response({ ...note, channel: null }))
-      .mockResolvedValueOnce(
-        response({
-          ...note,
-          channel: { code: 'digital', name: '数码', navigable: false },
-        }),
-      );
+    let detailRead = 0;
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      if (String(input).includes('/comments')) return response(emptyComments);
+      detailRead += 1;
+      return detailRead === 1
+        ? response({ ...note, channel: null })
+        : response({
+            ...note,
+            channel: { code: 'digital', name: '数码', navigable: false },
+          });
+    });
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
     const first = render(<NoteDetailView noteId={note.id} />);
     await screen.findByRole('heading', { name: note.title });
@@ -147,18 +175,169 @@ describe('NoteDetailPage', () => {
     expect(screen.getByAltText('笔记图片 1')).toBeVisible();
   });
 
-  it('keeps placeholder interactions inert and shows one consistent message', async () => {
+  it('keeps only sharing as an unavailable placeholder', async () => {
     render(<NoteDetailView noteId="00000000-0000-4000-8000-000000000004" />);
     await screen.findByRole('heading', {
       name: '<img src=x onerror=alert(1)>',
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '关注' }));
-    expect(screen.getByRole('status')).toHaveTextContent('功能正在开发中');
-    fireEvent.click(screen.getByLabelText('点赞 0，功能正在开发中'));
-    expect(screen.getByLabelText('点赞 0，功能正在开发中')).toHaveTextContent(
-      '0',
+    fireEvent.click(
+      screen.getByRole('button', { name: '分享，功能正在开发中' }),
     );
+    expect(screen.getByRole('status')).toHaveTextContent('功能正在开发中');
+    expect(screen.getByRole('button', { name: '关注' })).toBeVisible();
+    expect(screen.getByLabelText('点赞，当前 0')).toBeVisible();
+  });
+
+  it('completes like, favorite, follow, comment and authorized deletion', async () => {
+    const authenticatedNote = {
+      ...note,
+      viewer: { ...note.viewer, authenticated: true },
+    };
+    const existingComment = {
+      id: '00000000-0000-4000-8000-000000000010',
+      content: '已有评论',
+      createdAt: '2026-07-26T11:30:00.000Z',
+      author: {
+        id: '00000000-0000-4000-8000-000000000011',
+        nickname: '评论用户',
+        avatar: { type: 'initial', value: '评' },
+      },
+      isAuthor: false,
+      canDelete: true,
+    };
+    const createdComment = {
+      ...existingComment,
+      id: '00000000-0000-4000-8000-000000000012',
+      content: '新评论',
+    };
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith(`/notes/${note.id}`)) {
+          return response(authenticatedNote);
+        }
+        if (url.includes(`/notes/${note.id}/comments`) && !init?.method) {
+          return response({
+            items: [existingComment],
+            nextCursor: null,
+            total: 1,
+          });
+        }
+        if (url.endsWith(`/notes/${note.id}/like`)) {
+          return response({ active: true, count: 1 });
+        }
+        if (url.endsWith(`/notes/${note.id}/favorite`)) {
+          return response({ active: true, count: 1 });
+        }
+        if (url.endsWith(`/users/${note.author.id}/follow`)) {
+          return response({ following: true });
+        }
+        if (
+          url.endsWith(`/notes/${note.id}/comments`) &&
+          init?.method === 'POST'
+        ) {
+          expect(init.body).toBe(JSON.stringify({ content: '新评论' }));
+          return response({ comment: createdComment, total: 2 });
+        }
+        if (
+          url.endsWith(`/notes/${note.id}/comments/${existingComment.id}`) &&
+          init?.method === 'DELETE'
+        ) {
+          return response({ deleted: true, total: 1 });
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+    render(<NoteDetailView noteId={note.id} />);
+    await screen.findByText('已有评论');
+
+    fireEvent.click(screen.getByLabelText('点赞，当前 0'));
+    expect(await screen.findByLabelText('取消点赞，当前 1')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(screen.getByLabelText('收藏，当前 0'));
+    expect(await screen.findByLabelText('取消收藏，当前 1')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: '关注' }));
+    expect(
+      await screen.findByRole('button', { name: '已关注' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: '说点什么…' }));
+    fireEvent.change(screen.getByLabelText('评论内容'), {
+      target: { value: '新评论' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    await waitFor(() =>
+      expect(
+        screen.getByText('新评论', { selector: '.comment-body > p' }),
+      ).toBeVisible(),
+    );
+    expect(screen.getByText('共 2 条评论')).toBeVisible();
+
+    fireEvent.click(screen.getAllByRole('button', { name: '删除' }).at(-1)!);
+    expect(screen.getByRole('alertdialog', { name: '删除评论' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '确认删除' }));
+    await waitFor(() =>
+      expect(screen.queryByText('已有评论')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText('共 1 条评论')).toBeVisible();
+  });
+
+  it('keeps a comment draft when an expired session opens authentication', async () => {
+    const authenticatedNote = {
+      ...note,
+      viewer: { ...note.viewer, authenticated: true },
+    };
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith(`/notes/${note.id}`)) {
+          return response(authenticatedNote);
+        }
+        if (url.includes('/comments') && !init?.method) {
+          return response(emptyComments);
+        }
+        if (url.endsWith(`/notes/${note.id}/comments`)) {
+          return response(
+            {
+              statusCode: 401,
+              code: 'AUTHENTICATION_REQUIRED',
+              message: '请先登录',
+            },
+            401,
+          );
+        }
+        if (url.endsWith('/auth/session')) {
+          return response({
+            authenticated: false,
+            user: null,
+            pendingRegistration: false,
+            registrationExpired: false,
+          });
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+    render(<NoteDetailView noteId={note.id} />);
+    await screen.findByRole('heading', { name: note.title });
+
+    fireEvent.click(screen.getByRole('button', { name: '说点什么…' }));
+    fireEvent.change(screen.getByLabelText('评论内容'), {
+      target: { value: '需要保留的评论' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    expect(
+      await screen.findByRole('dialog', { name: '邮箱登录' }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '关闭登录弹窗' }));
+    expect(screen.getByLabelText('评论内容')).toHaveValue('需要保留的评论');
   });
 
   it('returns through browser history for a recorded in-site source', async () => {

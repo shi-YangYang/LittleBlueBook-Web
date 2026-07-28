@@ -1,4 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
+import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
 import request from 'supertest';
 
 import { createApplication } from '../src/bootstrap.js';
@@ -88,7 +91,138 @@ describe('backend application', () => {
         navigable: expect.any(Object),
       }),
     );
+
+    const schemas = response.body.components.schemas;
+    const successResponses = [
+      ['/api/v1/notes/{noteId}/like', 'put', '200'],
+      ['/api/v1/notes/{noteId}/like', 'delete', '200'],
+      ['/api/v1/notes/{noteId}/favorite', 'put', '200'],
+      ['/api/v1/notes/{noteId}/favorite', 'delete', '200'],
+      ['/api/v1/users/{userId}/follow', 'put', '200'],
+      ['/api/v1/users/{userId}/follow', 'delete', '200'],
+      ['/api/v1/notes/{noteId}/comments', 'get', '200'],
+      ['/api/v1/notes/{noteId}/comments', 'post', '201'],
+      ['/api/v1/notes/{noteId}/comments/{commentId}', 'delete', '200'],
+    ] as const;
+    for (const [path, method, status] of successResponses) {
+      expect(
+        response.body.paths[path][method].responses[status].content[
+          'application/json'
+        ].schema.$ref,
+      ).toMatch(/^#\/components\/schemas\/.+ResponseDto$/);
+    }
+
+    expect(schemas.RelationshipResultDto.properties).toEqual(
+      expect.objectContaining({
+        active: expect.any(Object),
+        count: expect.any(Object),
+      }),
+    );
+    expect(schemas.FollowResultDto.properties).toHaveProperty('following');
+    expect(schemas.CommentPageDto.properties).toEqual(
+      expect.objectContaining({
+        items: expect.any(Object),
+        nextCursor: expect.any(Object),
+        total: expect.any(Object),
+      }),
+    );
+    expect(schemas.NoteCommentDto.properties).toEqual(
+      expect.objectContaining({
+        id: expect.any(Object),
+        content: expect.any(Object),
+        createdAt: expect.any(Object),
+        author: expect.any(Object),
+        isAuthor: expect.any(Object),
+        canDelete: expect.any(Object),
+      }),
+    );
+    expect(schemas.CommentMutationResultDto.properties).toEqual(
+      expect.objectContaining({
+        comment: expect.any(Object),
+        total: expect.any(Object),
+      }),
+    );
+    expect(schemas.CommentDeletionResultDto.properties).toEqual(
+      expect.objectContaining({
+        deleted: expect.any(Object),
+        total: expect.any(Object),
+      }),
+    );
+
+    const errorResponses = [
+      ['/api/v1/notes/{noteId}/like', 'put', '401'],
+      ['/api/v1/notes/{noteId}/like', 'put', '404'],
+      ['/api/v1/notes/{noteId}/like', 'put', '409'],
+      ['/api/v1/notes/{noteId}/favorite', 'put', '401'],
+      ['/api/v1/notes/{noteId}/favorite', 'put', '404'],
+      ['/api/v1/users/{userId}/follow', 'put', '401'],
+      ['/api/v1/users/{userId}/follow', 'put', '404'],
+      ['/api/v1/users/{userId}/follow', 'put', '409'],
+      ['/api/v1/notes/{noteId}/comments', 'get', '400'],
+      ['/api/v1/notes/{noteId}/comments', 'get', '404'],
+      ['/api/v1/notes/{noteId}/comments', 'post', '400'],
+      ['/api/v1/notes/{noteId}/comments', 'post', '401'],
+      ['/api/v1/notes/{noteId}/comments', 'post', '404'],
+      ['/api/v1/notes/{noteId}/comments/{commentId}', 'delete', '401'],
+      ['/api/v1/notes/{noteId}/comments/{commentId}', 'delete', '403'],
+      ['/api/v1/notes/{noteId}/comments/{commentId}', 'delete', '404'],
+    ] as const;
+    for (const [path, method, status] of errorResponses) {
+      expect(
+        response.body.paths[path][method].responses[status].content[
+          'application/json'
+        ].schema.$ref,
+      ).toBe('#/components/schemas/InteractionApiErrorDto');
+    }
+    expect(schemas.InteractionApiErrorDto.properties).toEqual(
+      expect.objectContaining({
+        statusCode: expect.any(Object),
+        code: expect.any(Object),
+        message: expect.any(Object),
+      }),
+    );
   });
+
+  it('creates the Swagger document with the tsx development runtime', () => {
+    const backendRoot = resolve(__dirname, '..');
+    const runtimeRequire = createRequire(resolve(backendRoot, 'package.json'));
+    const tsxCli = runtimeRequire.resolve('tsx/cli');
+    const result = spawnSync(
+      process.execPath,
+      [
+        tsxCli,
+        '--eval',
+        [
+          "import 'reflect-metadata';",
+          'void (async () => {',
+          "const { createApplication } = await import('./src/bootstrap.ts');",
+          'const app = await createApplication();',
+          'await app.close();',
+          '})().catch((error) => { console.error(error); process.exitCode = 1; });',
+        ].join(' '),
+      ],
+      {
+        cwd: backendRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          NODE_ENV: 'test',
+          SWAGGER_ENABLED: 'true',
+        },
+        timeout: 30_000,
+      },
+    );
+
+    expect({
+      status: result.status,
+      signal: result.signal,
+      stderr: result.stderr,
+    }).toEqual({
+      status: 0,
+      signal: null,
+      stderr: '',
+    });
+  }, 35_000);
 
   it('does not create business routes in the API namespace', async () => {
     await request(app.getHttpServer()).get('/api/v1').expect(404);

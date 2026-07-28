@@ -1,4 +1,5 @@
 export type NoteAuthor = {
+  id: string;
   nickname: string;
   avatar: {
     type: 'initial';
@@ -15,7 +16,9 @@ export type NoteCard = {
     height: number;
   };
   author: NoteAuthor;
-  likes: 0;
+  likes: number;
+  liked: boolean;
+  canLike: boolean;
 };
 
 export type NotePage = {
@@ -40,9 +43,18 @@ export type NoteDetail = {
     height: number;
   }>;
   interactions: {
-    likes: 0;
-    favorites: 0;
-    comments: 0;
+    likes: number;
+    favorites: number;
+    comments: number;
+  };
+  viewer: {
+    authenticated: boolean;
+    isAuthor: boolean;
+    liked: boolean;
+    favorited: boolean;
+    followingAuthor: boolean;
+    canLike: boolean;
+    canFollow: boolean;
   };
 };
 

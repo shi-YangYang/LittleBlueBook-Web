@@ -24,6 +24,9 @@ type NoteFeedProps = {
   errorMessage: string;
   onPublish?: () => void;
   onUnauthorized?: () => void;
+  onAuthenticationRequired?: (resume: () => Promise<void>) => void;
+  onInteractionMessage?: (message: string) => void;
+  removeWhenUnliked?: boolean;
 };
 
 const INITIAL_LOADING_MINIMUM_MS = 300;
@@ -35,6 +38,9 @@ export function NoteFeed({
   errorMessage,
   onPublish,
   onUnauthorized,
+  onAuthenticationRequired,
+  onInteractionMessage,
+  removeWhenUnliked = false,
 }: NoteFeedProps) {
   const [items, setItems] = useState<NoteCardData[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -43,6 +49,7 @@ export function NoteFeed({
   const [initialError, setInitialError] = useState(false);
   const [moreError, setMoreError] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
+  const [interactionError, setInteractionError] = useState('');
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const readPage = useCallback(
@@ -196,9 +203,37 @@ export function NoteFeed({
     <section aria-label={label}>
       <div className="feed-grid" data-testid="feed-grid">
         {items.map((note) => (
-          <NoteCard key={note.id} note={note} />
+          <NoteCard
+            key={note.id}
+            note={note}
+            onAuthenticationRequired={onAuthenticationRequired}
+            onInteractionError={(message) => {
+              setInteractionError(message);
+              onInteractionMessage?.(message);
+            }}
+            onLikeChanged={(noteId, result) => {
+              setItems((current) =>
+                removeWhenUnliked && !result.active
+                  ? current.filter((item) => item.id !== noteId)
+                  : current.map((item) =>
+                      item.id === noteId
+                        ? {
+                            ...item,
+                            likes: result.count,
+                            liked: result.active,
+                          }
+                        : item,
+                    ),
+              );
+            }}
+          />
         ))}
       </div>
+      {interactionError && !onInteractionMessage ? (
+        <p className="feed-interaction-error" role="alert">
+          {interactionError}
+        </p>
+      ) : null}
       <div className="feed-pagination" ref={sentinelRef} aria-live="polite">
         {moreError ? (
           <>

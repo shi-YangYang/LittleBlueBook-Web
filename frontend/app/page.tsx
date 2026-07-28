@@ -150,6 +150,7 @@ export default function Home() {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const authStateVersionRef = useRef(0);
   const destinationAfterAuthRef = useRef<string | null>(null);
+  const interactionAfterAuthRef = useRef<(() => Promise<void>) | null>(null);
 
   const showComingSoon = useCallback(() => {
     setToast('功能开发中');
@@ -282,6 +283,12 @@ export default function Home() {
     destinationAfterAuthRef.current = null;
     if (destination) {
       window.location.assign(destination);
+      return;
+    }
+    const interaction = interactionAfterAuthRef.current;
+    interactionAfterAuthRef.current = null;
+    if (interaction) {
+      void interaction();
     }
   };
 
@@ -315,6 +322,7 @@ export default function Home() {
     setModalOpen(false);
     setError('');
     destinationAfterAuthRef.current = null;
+    interactionAfterAuthRef.current = null;
     window.setTimeout(() => loginButtonRef.current?.focus(), 0);
   }, []);
 
@@ -656,6 +664,11 @@ export default function Home() {
                 : '推荐内容加载失败，请稍后重试'
             }
             onPublish={activeChannel ? undefined : openPublish}
+            onAuthenticationRequired={(resume) => {
+              interactionAfterAuthRef.current = resume;
+              openModal();
+            }}
+            onInteractionMessage={setToast}
           />
         )}
       </main>

@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { ChannelsModule } from './channels/channels.module.js';
 import { validateEnvironment } from './config/environment.js';
 import { HealthModule } from './health/health.module.js';
+import { InteractionsModule } from './interactions/interactions.module.js';
 import { MediaModule } from './media/media.module.js';
 import { NotesModule } from './notes/notes.module.js';
 import { ProfileModule } from './profile/profile.module.js';
@@ -19,6 +20,7 @@ import { ProfileModule } from './profile/profile.module.js';
     AuthModule,
     ChannelsModule,
     HealthModule,
+    InteractionsModule,
     MediaModule,
     NotesModule,
     ProfileModule,

@@ -12,6 +12,7 @@
 | SPEC-004 | 内容发布与展示 | Accepted | `spec-004-content-publishing/` |
 | SPEC-005 | 页面高度与滚动模型自适应改造 | Accepted | `spec-005-adaptive-height-and-scroll/` |
 | SPEC-006 | 笔记频道 | Accepted | `spec-006-note-channels/` |
+| SPEC-007 | 点赞、收藏、评论与关注 | Accepted | `spec-007-social-interactions/` |
 
 ## 状态说明
 

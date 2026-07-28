@@ -239,7 +239,11 @@ describe('NotesService', () => {
         createdAt: new Date(
           `2026-07-${String(26 - index).padStart(2, '0')}T12:00:00.000Z`,
         ),
-        author: { nickname: '蓝书作者', email: 'must-not-leak@example.com' },
+        author: {
+          id: user.id,
+          nickname: '蓝书作者',
+          email: 'must-not-leak@example.com',
+        },
         images: [
           {
             objectKey: `${String(index).padStart(48, 'a')}.png`,
@@ -248,10 +252,16 @@ describe('NotesService', () => {
           },
         ],
         content: 'must not be returned',
+        likes: [{ userId: user.id }],
+        _count: { likes: 3 },
       })),
     );
 
-    const result = await service.recommendations(undefined, 20);
+    const result = await service.recommendations(
+      'session-secret',
+      undefined,
+      20,
+    );
 
     expect(result.items).toHaveLength(20);
     expect(result.nextCursor).toEqual(expect.any(String));
@@ -261,7 +271,9 @@ describe('NotesService', () => {
         nickname: '蓝书作者',
         avatar: { type: 'initial', value: '蓝' },
       },
-      likes: 0,
+      likes: 3,
+      liked: true,
+      canLike: false,
     });
     expect(JSON.stringify(result)).not.toContain('must-not-leak');
     expect(JSON.stringify(result)).not.toContain('content');
@@ -277,7 +289,11 @@ describe('NotesService', () => {
   it('normalizes transformed query values before using them in Prisma', async () => {
     const { service, prisma } = dependencies();
 
-    await service.recommendations(undefined, '20' as unknown as number);
+    await service.recommendations(
+      undefined,
+      undefined,
+      '20' as unknown as number,
+    );
 
     expect(prisma.note.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ take: 21 }),
@@ -291,7 +307,12 @@ describe('NotesService', () => {
       title: '<img src=x onerror=alert(1)>',
       content: '<script>alert(1)</script>\n第二行',
       createdAt: new Date('2026-07-26T12:00:00.000Z'),
-      author: { nickname: '蓝书作者', email: 'private@example.com' },
+      author: {
+        id: user.id,
+        nickname: '蓝书作者',
+        email: 'private@example.com',
+        followers: [],
+      },
       channel: {
         code: 'digital',
         name: '数码',
@@ -302,9 +323,15 @@ describe('NotesService', () => {
         { objectKey: `${'a'.repeat(48)}.png`, width: 100, height: 120 },
         { objectKey: `${'b'.repeat(48)}.webp`, width: 90, height: 80 },
       ],
+      likes: [],
+      favorites: [],
+      _count: { likes: 0, favorites: 0, comments: 0 },
     });
 
-    const result = await service.detail('00000000-0000-4000-8000-000000000003');
+    const result = await service.detail(
+      undefined,
+      '00000000-0000-4000-8000-000000000003',
+    );
 
     expect(result.images).toHaveLength(2);
     expect(result.interactions).toEqual({
@@ -325,11 +352,13 @@ describe('NotesService', () => {
     const { service } = dependencies();
 
     await expect(
-      service.recommendations('not-a-cursor', 20),
+      service.recommendations(undefined, 'not-a-cursor', 20),
     ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'CURSOR_INVALID' }),
     });
-    await expect(service.detail('../../etc/passwd')).rejects.toMatchObject({
+    await expect(
+      service.detail(undefined, '../../etc/passwd'),
+    ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'NOTE_NOT_FOUND' }),
     });
   });
@@ -372,7 +401,7 @@ describe('NotesService', () => {
         createdAt: new Date(
           `2026-07-${String(26 - index).padStart(2, '0')}T12:00:00.000Z`,
         ),
-        author: { nickname: '蓝书作者' },
+        author: { id: user.id, nickname: '蓝书作者' },
         images: [
           {
             objectKey: `${String(index).padStart(48, 'b')}.png`,
@@ -380,17 +409,28 @@ describe('NotesService', () => {
             height: 120,
           },
         ],
+        likes: [],
+        _count: { likes: 0 },
       })),
     );
-    const recommendation = await service.recommendations(undefined, 20);
+    const recommendation = await service.recommendations(
+      undefined,
+      undefined,
+      20,
+    );
 
     await expect(
-      service.channel('digital', recommendation.nextCursor ?? undefined, 20),
+      service.channel(
+        undefined,
+        'digital',
+        recommendation.nextCursor ?? undefined,
+        20,
+      ),
     ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'CURSOR_INVALID' }),
     });
 
-    await service.channel('digital', undefined, 20);
+    await service.channel(undefined, 'digital', undefined, 20);
     expect(prisma.note.findMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

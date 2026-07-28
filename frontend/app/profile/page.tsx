@@ -11,6 +11,7 @@ import {
   useState,
 } from 'react';
 
+import { AuthDialog } from '../_components/auth-dialog';
 import { Icon } from '../_components/icon';
 import { NoteFeed } from '../_components/note-feed';
 
@@ -112,9 +113,11 @@ export default function ProfilePage() {
   const [logoutError, setLogoutError] = useState('');
   const [toast, setToast] = useState('');
   const [reloadVersion, setReloadVersion] = useState(0);
+  const [authOpen, setAuthOpen] = useState(false);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const logoutButtonRef = useRef<HTMLButtonElement>(null);
   const tabRefs = useRef<Partial<Record<TabId, HTMLButtonElement | null>>>({});
+  const pendingInteractionRef = useRef<(() => Promise<void>) | null>(null);
 
   const redirectToLogin = useCallback(() => {
     setProfile(null);
@@ -485,21 +488,38 @@ export default function ProfilePage() {
                     tabIndex={0}
                     hidden={activeTab !== tab.id}
                   >
-                    {tab.id === 'notes' ? (
+                    {activeTab === tab.id ? (
                       <NoteFeed
-                        endpoint="/notes/mine"
-                        label="我的笔记"
+                        endpoint={
+                          tab.id === 'notes'
+                            ? '/notes/mine'
+                            : tab.id === 'favorites'
+                              ? '/notes/favorites'
+                              : '/notes/liked'
+                        }
+                        label={
+                          tab.id === 'notes'
+                            ? '我的笔记'
+                            : tab.id === 'favorites'
+                              ? '我的收藏'
+                              : '我的点赞'
+                        }
                         emptyMessage={tab.emptyMessage}
-                        errorMessage="笔记加载失败，请稍后重试"
-                        onPublish={() => window.location.assign('/publish')}
+                        errorMessage={`${tab.label}内容加载失败，请稍后重试`}
+                        onPublish={
+                          tab.id === 'notes'
+                            ? () => window.location.assign('/publish')
+                            : undefined
+                        }
                         onUnauthorized={redirectToLogin}
+                        onAuthenticationRequired={(resume) => {
+                          pendingInteractionRef.current = resume;
+                          setAuthOpen(true);
+                        }}
+                        onInteractionMessage={setToast}
+                        removeWhenUnliked={tab.id === 'likes'}
                       />
-                    ) : (
-                      <>
-                        <Icon name="empty" size={48} />
-                        <p>{tab.emptyMessage}</p>
-                      </>
-                    )}
+                    ) : null}
                   </div>
                 ))}
               </section>
@@ -513,6 +533,22 @@ export default function ProfilePage() {
           {toast}
         </div>
       ) : null}
+
+      <AuthDialog
+        open={authOpen}
+        onClose={() => {
+          setAuthOpen(false);
+          pendingInteractionRef.current = null;
+        }}
+        onAuthenticated={() => {
+          setAuthOpen(false);
+          const resume = pendingInteractionRef.current;
+          pendingInteractionRef.current = null;
+          if (resume) void resume();
+          setReloadVersion((version) => version + 1);
+        }}
+        onToast={setToast}
+      />
     </div>
   );
 }

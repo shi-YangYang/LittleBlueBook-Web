@@ -32,6 +32,7 @@ export class ProfileService {
     const user = await this.prisma.user.findUnique({
       where: { id: sessionUser.id },
       select: {
+        id: true,
         nickname: true,
         littleBlueBookId: true,
         gender: true,
@@ -44,6 +45,21 @@ export class ProfileService {
         '请先登录',
       );
     }
+    const [following, followers, receivedLikes, receivedFavorites] =
+      await Promise.all([
+        this.prisma.userFollow.count({
+          where: { followerId: user.id },
+        }),
+        this.prisma.userFollow.count({
+          where: { followedId: user.id },
+        }),
+        this.prisma.noteLike.count({
+          where: { note: { authorId: user.id } },
+        }),
+        this.prisma.noteFavorite.count({
+          where: { note: { authorId: user.id } },
+        }),
+      ]);
 
     return {
       nickname: user.nickname,
@@ -54,9 +70,9 @@ export class ProfileService {
         value: Array.from(user.nickname.trim())[0] ?? '蓝',
       },
       stats: {
-        following: 0,
-        followers: 0,
-        receivedLikesAndFavorites: 0,
+        following,
+        followers,
+        receivedLikesAndFavorites: receivedLikes + receivedFavorites,
       },
     };
   }

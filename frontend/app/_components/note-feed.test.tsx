@@ -22,10 +22,13 @@ const firstNote = {
   title: '<strong>真实纯文本标题</strong>',
   cover: { url: 'https://media.example.test/one.png', width: 4, height: 5 },
   author: {
+    id: '00000000-0000-4000-8000-000000000099',
     nickname: '蓝书作者',
     avatar: { type: 'initial', value: '蓝' },
   },
   likes: 0,
+  liked: false,
+  canLike: true,
 };
 
 describe('NoteFeed', () => {
@@ -95,7 +98,7 @@ describe('NoteFeed', () => {
     );
     expect(document.querySelector('.card-title strong')).toBeNull();
     expect(screen.getByText('蓝书作者')).toBeVisible();
-    expect(screen.getByLabelText('点赞 0')).toBeVisible();
+    expect(screen.getByLabelText('点赞，当前 0')).toBeVisible();
     expect(screen.queryByText(/正文|分钟前|小时前/)).toBeNull();
   });
 
@@ -150,6 +153,44 @@ describe('NoteFeed', () => {
     fireEvent.click(screen.getByRole('button', { name: '重新加载' }));
     expect(await screen.findByText('第二篇笔记')).toBeVisible();
     expect(document.querySelectorAll('.note-card')).toHaveLength(2);
+  });
+
+  it('likes from the card without navigating and uses the server count', async () => {
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/notes/recommendations')) {
+          return response({ items: [firstNote], nextCursor: null });
+        }
+        if (url.includes(`/notes/${firstNote.id}/like`)) {
+          expect(init?.method).toBe('PUT');
+          return response({ active: true, count: 7 });
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+
+    render(
+      <NoteFeed
+        endpoint="/notes/recommendations"
+        label="推荐内容"
+        emptyMessage="没有笔记"
+        errorMessage="加载失败"
+      />,
+    );
+    const like = await screen.findByRole('button', {
+      name: '点赞，当前 0',
+    });
+    fireEvent.click(like);
+
+    expect(
+      await screen.findByRole('button', { name: '取消点赞，当前 7' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/notes/${firstNote.id}/like`),
+      expect.objectContaining({ method: 'PUT' }),
+    );
   });
 
   it('offers a first-load retry without falling back to demo content', async () => {

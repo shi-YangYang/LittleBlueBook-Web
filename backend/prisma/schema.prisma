@@ -16,15 +16,20 @@ enum Gender {
 }
 
 model User {
-  id               String   @id @default(uuid()) @db.Uuid
-  email            String   @unique @db.VarChar(320)
-  nickname         String   @db.VarChar(20)
-  littleBlueBookId String   @unique @db.VarChar(10)
-  gender           Gender   @default(PRIVATE)
-  createdAt        DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
-  lastLoginAt      DateTime @default(now()) @db.Timestamptz(3)
+  id               String         @id @default(uuid()) @db.Uuid
+  email            String         @unique @db.VarChar(320)
+  nickname         String         @db.VarChar(20)
+  littleBlueBookId String         @unique @db.VarChar(10)
+  gender           Gender         @default(PRIVATE)
+  createdAt        DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @db.Timestamptz(3)
+  lastLoginAt      DateTime       @default(now()) @db.Timestamptz(3)
   notes            Note[]
+  noteLikes        NoteLike[]
+  noteFavorites    NoteFavorite[]
+  comments         NoteComment[]
+  following        UserFollow[]   @relation("UserFollowing")
+  followers        UserFollow[]   @relation("UserFollowers")
 
   @@map("users")
 }
@@ -46,23 +51,79 @@ model Channel {
 }
 
 model Note {
-  id              String      @id @default(uuid()) @db.Uuid
-  authorId        String      @db.Uuid
-  channelId       String      @db.Uuid
-  title           String      @db.VarChar(50)
-  content         String      @db.Text
-  clientRequestId String      @db.Uuid
-  createdAt       DateTime    @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime    @updatedAt @db.Timestamptz(3)
-  author          User        @relation(fields: [authorId], references: [id], onDelete: Restrict)
-  channel         Channel     @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  id              String         @id @default(uuid()) @db.Uuid
+  authorId        String         @db.Uuid
+  channelId       String         @db.Uuid
+  title           String         @db.VarChar(50)
+  content         String         @db.Text
+  clientRequestId String         @db.Uuid
+  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(3)
+  author          User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  channel         Channel        @relation(fields: [channelId], references: [id], onDelete: Restrict)
   images          NoteImage[]
+  likes           NoteLike[]
+  favorites       NoteFavorite[]
+  comments        NoteComment[]
 
   @@unique([authorId, clientRequestId])
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@index([authorId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([channelId, createdAt(sort: Desc), id(sort: Desc)])
   @@map("notes")
+}
+
+model NoteLike {
+  userId    String   @db.Uuid
+  noteId    String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@id([userId, noteId])
+  @@index([noteId])
+  @@index([userId, createdAt(sort: Desc), noteId(sort: Desc)])
+  @@map("note_likes")
+}
+
+model NoteFavorite {
+  userId    String   @db.Uuid
+  noteId    String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@id([userId, noteId])
+  @@index([noteId])
+  @@index([userId, createdAt(sort: Desc), noteId(sort: Desc)])
+  @@map("note_favorites")
+}
+
+model NoteComment {
+  id        String   @id @default(uuid()) @db.Uuid
+  noteId    String   @db.Uuid
+  authorId  String   @db.Uuid
+  content   String   @db.VarChar(500)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([noteId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([authorId])
+  @@map("note_comments")
+}
+
+model UserFollow {
+  followerId String   @db.Uuid
+  followedId String   @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  follower   User     @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  followed   User     @relation("UserFollowers", fields: [followedId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followedId])
+  @@index([followedId])
+  @@index([followerId, createdAt(sort: Desc), followedId(sort: Desc)])
+  @@map("user_follows")
 }
 
 model NoteImage {

@@ -149,18 +149,22 @@ export class NotesService {
   }
 
   async recommendations(
+    sessionId: string | undefined,
     cursor: string | undefined,
     limit: number,
   ): Promise<NotePage> {
-    return this.list({ scope: 'recommendations' }, cursor, limit);
+    const viewer = await this.auth.currentUser(sessionId);
+    return this.list({ scope: 'recommendations' }, cursor, limit, viewer?.id);
   }
 
   async channel(
+    sessionId: string | undefined,
     channelCode: string,
     cursor: string | undefined,
     limit: number,
   ): Promise<NotePage> {
     const channel = await this.channels.requirePublic(channelCode);
+    const viewer = await this.auth.currentUser(sessionId);
     return this.list(
       {
         channelId: channel.id,
@@ -168,6 +172,7 @@ export class NotesService {
       },
       cursor,
       limit,
+      viewer?.id,
     );
   }
 
@@ -181,13 +186,37 @@ export class NotesService {
       { authorId: user.id, scope: `mine:${user.id}` },
       cursor,
       limit,
+      user.id,
     );
   }
 
-  async detail(noteId: string): Promise<NoteDetail> {
+  async favorites(
+    sessionId: string | undefined,
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<NotePage> {
+    const user = await this.requireUser(sessionId);
+    return this.interactionList('favorites', user.id, cursor, limit);
+  }
+
+  async liked(
+    sessionId: string | undefined,
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<NotePage> {
+    const user = await this.requireUser(sessionId);
+    return this.interactionList('likes', user.id, cursor, limit);
+  }
+
+  async detail(
+    sessionId: string | undefined,
+    noteId: string,
+  ): Promise<NoteDetail> {
     if (!UUID_PATTERN.test(noteId)) {
       throw this.notFound();
     }
+    const viewer = await this.auth.currentUser(sessionId);
+    const viewerId = viewer?.id ?? '00000000-0000-0000-0000-000000000000';
     const note = await this.prisma.note.findUnique({
       where: { id: noteId },
       select: {
@@ -195,7 +224,17 @@ export class NotesService {
         title: true,
         content: true,
         createdAt: true,
-        author: { select: { nickname: true } },
+        author: {
+          select: {
+            id: true,
+            nickname: true,
+            followers: {
+              where: { followerId: viewerId },
+              take: 1,
+              select: { followerId: true },
+            },
+          },
+        },
         channel: {
           select: {
             code: true,
@@ -212,6 +251,23 @@ export class NotesService {
             height: true,
           },
         },
+        likes: {
+          where: { userId: viewerId },
+          take: 1,
+          select: { userId: true },
+        },
+        favorites: {
+          where: { userId: viewerId },
+          take: 1,
+          select: { userId: true },
+        },
+        _count: {
+          select: {
+            likes: true,
+            favorites: true,
+            comments: true,
+          },
+        },
       },
     });
     if (!note || note.images.length < 1) {
@@ -223,7 +279,7 @@ export class NotesService {
       title: note.title,
       content: note.content,
       createdAt: note.createdAt.toISOString(),
-      author: this.author(note.author.nickname),
+      author: this.author(note.author.id, note.author.nickname),
       channel: note.channel.isPublic
         ? {
             code: note.channel.code,
@@ -236,7 +292,20 @@ export class NotesService {
         width: image.width,
         height: image.height,
       })),
-      interactions: { likes: 0, favorites: 0, comments: 0 },
+      interactions: {
+        likes: note._count.likes,
+        favorites: note._count.favorites,
+        comments: note._count.comments,
+      },
+      viewer: {
+        authenticated: Boolean(viewer),
+        isAuthor: viewer?.id === note.author.id,
+        liked: note.likes.length > 0,
+        favorited: note.favorites.length > 0,
+        followingAuthor: note.author.followers.length > 0,
+        canLike: viewer?.id !== note.author.id,
+        canFollow: viewer?.id !== note.author.id,
+      },
     };
   }
 
@@ -248,6 +317,7 @@ export class NotesService {
     },
     cursorInput: string | undefined,
     limit: number,
+    viewerId: string | undefined,
   ): Promise<NotePage> {
     const pageSize = Number(limit);
     if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 20) {
@@ -281,7 +351,7 @@ export class NotesService {
         id: true,
         title: true,
         createdAt: true,
-        author: { select: { nickname: true } },
+        author: { select: { id: true, nickname: true } },
         images: {
           where: { order: 0 },
           take: 1,
@@ -291,6 +361,14 @@ export class NotesService {
             height: true,
           },
         },
+        likes: viewerId
+          ? {
+              where: { userId: viewerId },
+              take: 1,
+              select: { userId: true },
+            }
+          : false,
+        _count: { select: { likes: true } },
       },
     });
     const hasMore = notes.length > pageSize;
@@ -298,7 +376,7 @@ export class NotesService {
     const last = pageItems.at(-1);
 
     return {
-      items: pageItems.map((note) => this.toCard(note)),
+      items: pageItems.map((note) => this.toCard(note, viewerId)),
       nextCursor:
         hasMore && last
           ? this.encodeCursor({
@@ -310,16 +388,105 @@ export class NotesService {
     };
   }
 
-  private toCard(note: {
-    id: string;
-    title: string;
-    author: { nickname: string };
-    images: Array<{
-      objectKey: string;
-      width: number;
-      height: number;
-    }>;
-  }): NoteCard {
+  private async interactionList(
+    kind: 'favorites' | 'likes',
+    userId: string,
+    cursorInput: string | undefined,
+    limit: number,
+  ): Promise<NotePage> {
+    const pageSize = Number(limit);
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 20) {
+      throw new ApiException(
+        HttpStatus.BAD_REQUEST,
+        'PAGINATION_INVALID',
+        '分页参数无效',
+      );
+    }
+    const scope = `${kind}:${userId}`;
+    const cursor = this.decodeCursor(cursorInput, scope);
+    const cursorWhere = cursor
+      ? {
+          OR: [
+            { createdAt: { lt: new Date(cursor.createdAt) } },
+            {
+              createdAt: new Date(cursor.createdAt),
+              noteId: { lt: cursor.id },
+            },
+          ],
+        }
+      : {};
+    const select = {
+      noteId: true,
+      createdAt: true,
+      note: {
+        select: {
+          id: true,
+          title: true,
+          author: { select: { id: true, nickname: true } },
+          images: {
+            where: { order: 0 },
+            take: 1,
+            select: {
+              objectKey: true,
+              width: true,
+              height: true,
+            },
+          },
+          likes: {
+            where: { userId },
+            take: 1,
+            select: { userId: true },
+          },
+          _count: { select: { likes: true } },
+        },
+      },
+    } satisfies Prisma.NoteLikeSelect;
+    const relations =
+      kind === 'likes'
+        ? await this.prisma.noteLike.findMany({
+            where: { userId, ...cursorWhere },
+            orderBy: [{ createdAt: 'desc' }, { noteId: 'desc' }],
+            take: pageSize + 1,
+            select,
+          })
+        : await this.prisma.noteFavorite.findMany({
+            where: { userId, ...cursorWhere },
+            orderBy: [{ createdAt: 'desc' }, { noteId: 'desc' }],
+            take: pageSize + 1,
+            select,
+          });
+    const hasMore = relations.length > pageSize;
+    const pageItems = hasMore ? relations.slice(0, pageSize) : relations;
+    const last = pageItems.at(-1);
+
+    return {
+      items: pageItems.map((relation) => this.toCard(relation.note, userId)),
+      nextCursor:
+        hasMore && last
+          ? this.encodeCursor({
+              createdAt: last.createdAt.toISOString(),
+              id: last.noteId,
+              scope,
+            })
+          : null,
+    };
+  }
+
+  private toCard(
+    note: {
+      id: string;
+      title: string;
+      author: { id: string; nickname: string };
+      images: Array<{
+        objectKey: string;
+        width: number;
+        height: number;
+      }>;
+      likes?: Array<{ userId: string }>;
+      _count: { likes: number };
+    },
+    viewerId?: string,
+  ): NoteCard {
     const cover = note.images[0];
     if (!cover) {
       throw new ApiException(
@@ -336,13 +503,16 @@ export class NotesService {
         width: cover.width,
         height: cover.height,
       },
-      author: this.author(note.author.nickname),
-      likes: 0,
+      author: this.author(note.author.id, note.author.nickname),
+      likes: note._count.likes,
+      liked: (note.likes?.length ?? 0) > 0,
+      canLike: viewerId !== note.author.id,
     };
   }
 
-  private author(nickname: string) {
+  private author(id: string, nickname: string) {
     return {
+      id,
       nickname,
       avatar: {
         type: 'initial' as const,
