@@ -7,6 +7,7 @@ import {
   type ChangeEvent,
   type DragEvent,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   useEffect,
   useMemo,
   useRef,
@@ -16,6 +17,7 @@ import {
 import { Icon } from '../_components/icon';
 import { ReauthDialog } from '../_components/reauth-dialog';
 import { apiRequest, ApiRequestError } from '../_lib/api';
+import type { PublicChannel, PublicChannelList } from '../_lib/channels';
 import { markNoteDetailSource } from '../_lib/notes';
 
 type SessionResult = {
@@ -52,8 +54,18 @@ export default function PublishPage() {
   const [toast, setToast] = useState('');
   const [reauthOpen, setReauthOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [channels, setChannels] = useState<PublicChannel[]>([]);
+  const [channelsLoading, setChannelsLoading] = useState(true);
+  const [channelsFailed, setChannelsFailed] = useState(false);
+  const [channelsReloadVersion, setChannelsReloadVersion] = useState(0);
+  const [selectedChannelCode, setSelectedChannelCode] = useState<string | null>(
+    null,
+  );
+  const [channelPanelOpen, setChannelPanelOpen] = useState(false);
   const requestIdRef = useRef(createRequestId());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const channelTriggerRef = useRef<HTMLButtonElement>(null);
+  const channelOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const imagesRef = useRef<SelectedImage[]>([]);
   const dirtyRef = useRef(false);
 
@@ -85,6 +97,36 @@ export default function PublishPage() {
       active = false;
     };
   }, [router]);
+
+  useEffect(() => {
+    let active = true;
+    void apiRequest<PublicChannelList>('/channels?purpose=publish')
+      .then((result) => {
+        if (!active) return;
+        setChannels(result.items);
+        setChannelsFailed(result.items.length === 0);
+      })
+      .catch(() => {
+        if (!active) return;
+        setChannels([]);
+        setChannelsFailed(true);
+      })
+      .finally(() => {
+        if (active) setChannelsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [channelsReloadVersion]);
+
+  useEffect(() => {
+    if (!channelPanelOpen) return;
+    const selectedIndex = channels.findIndex(
+      (channel) => channel.code === selectedChannelCode,
+    );
+    const focusIndex = selectedIndex >= 0 ? selectedIndex : 0;
+    window.setTimeout(() => channelOptionRefs.current[focusIndex]?.focus(), 0);
+  }, [channelPanelOpen, channels, selectedChannelCode]);
 
   useEffect(
     () => () => {
@@ -119,7 +161,14 @@ export default function PublishPage() {
     contentLength >= 1 &&
     contentLength <= 2000 &&
     images.length >= 1 &&
-    images.length <= 9;
+    images.length <= 9 &&
+    selectedChannelCode !== null &&
+    !channelsLoading &&
+    !channelsFailed;
+
+  const selectedChannel = channels.find(
+    (channel) => channel.code === selectedChannelCode,
+  );
 
   const addFiles = (files: File[]) => {
     setError('');
@@ -186,6 +235,38 @@ export default function PublishPage() {
     window.location.assign(destination);
   };
 
+  const closeChannelPanel = (restoreFocus = true) => {
+    setChannelPanelOpen(false);
+    if (restoreFocus) {
+      window.setTimeout(() => channelTriggerRef.current?.focus(), 0);
+    }
+  };
+
+  const handleChannelKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeChannelPanel();
+      return;
+    }
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+      nextIndex = (index + 1) % channels.length;
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+      nextIndex = (index - 1 + channels.length) % channels.length;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = channels.length - 1;
+    }
+    if (nextIndex !== null) {
+      event.preventDefault();
+      channelOptionRefs.current[nextIndex]?.focus();
+    }
+  };
+
   const publish = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
@@ -196,13 +277,17 @@ export default function PublishPage() {
         setError('正文需为1～2000个字符');
       } else if (images.length < 1) {
         setError('请至少选择1张图片');
+      } else if (!selectedChannelCode) {
+        setError('请选择频道');
       }
       return;
     }
+    if (!selectedChannelCode) return;
 
     const formData = new FormData();
     formData.set('title', title.trim());
     formData.set('content', content.trim());
+    formData.set('channelCode', selectedChannelCode);
     formData.set('clientRequestId', requestIdRef.current);
     images.forEach((image) => formData.append('images', image.file));
 
@@ -223,6 +308,10 @@ export default function PublishPage() {
         setError('登录状态已失效，请重新登录后继续发布');
         setReauthOpen(true);
       } else if (publishError instanceof ApiRequestError) {
+        if (publishError.message === 'CHANNEL_INVALID') {
+          setSelectedChannelCode(null);
+          setChannelPanelOpen(false);
+        }
         setError(publishError.payload.message ?? '发布失败，请稍后重试');
       } else {
         setError('网络异常，内容已保留，请稍后重试');
@@ -420,6 +509,90 @@ export default function PublishPage() {
               {contentLength}/2000
             </small>
           </label>
+
+          <div className="channel-picker">
+            <span className="channel-picker-label">频道</span>
+            {channelsFailed ? (
+              <div className="channel-picker-failure">
+                <span id="channel-picker-help" role="alert">
+                  频道加载失败，请重试
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setChannelsLoading(true);
+                    setChannelsFailed(false);
+                    setChannelsReloadVersion((value) => value + 1);
+                  }}
+                >
+                  重试
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  ref={channelTriggerRef}
+                  className="channel-picker-trigger"
+                  type="button"
+                  aria-expanded={channelPanelOpen}
+                  aria-controls="channel-picker-panel"
+                  aria-describedby="channel-picker-help"
+                  disabled={channelsLoading}
+                  onClick={() => setChannelPanelOpen((value) => !value)}
+                >
+                  <span>
+                    {channelsLoading
+                      ? '正在加载频道…'
+                      : (selectedChannel?.name ?? '选择频道')}
+                  </span>
+                  <Icon name="chevronRight" size={18} />
+                </button>
+                <small id="channel-picker-help">
+                  {selectedChannel ? '已选择，可在发布前更换' : '必选'}
+                </small>
+                {channelPanelOpen ? (
+                  <div
+                    className="channel-picker-panel"
+                    id="channel-picker-panel"
+                    role="radiogroup"
+                    aria-label="选择笔记频道"
+                  >
+                    {channels.map((channel, index) => (
+                      <button
+                        key={channel.code}
+                        ref={(element) => {
+                          channelOptionRefs.current[index] = element;
+                        }}
+                        type="button"
+                        role="radio"
+                        aria-checked={selectedChannelCode === channel.code}
+                        tabIndex={
+                          selectedChannelCode === channel.code ||
+                          (!selectedChannelCode && index === 0)
+                            ? 0
+                            : -1
+                        }
+                        onKeyDown={(event) =>
+                          handleChannelKeyDown(event, index)
+                        }
+                        onClick={() => {
+                          setSelectedChannelCode(channel.code);
+                          setError('');
+                          markDirty();
+                          closeChannelPanel();
+                        }}
+                      >
+                        <span>{channel.name}</span>
+                        {selectedChannelCode === channel.code ? (
+                          <span aria-hidden="true">已选</span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
 
           <button
             className="topic-placeholder"

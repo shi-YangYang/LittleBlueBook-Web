@@ -43,6 +43,26 @@ function emptyNotes() {
   return response({ items: [], nextCursor: null });
 }
 
+function channelList() {
+  return response({
+    items: [
+      { code: 'digital', name: '数码', displayOrder: 1 },
+      { code: 'automotive', name: '汽车', displayOrder: 2 },
+      { code: 'gaming', name: '游戏', displayOrder: 3 },
+      { code: 'sports', name: '运动', displayOrder: 4 },
+      { code: 'fitness', name: '健身', displayOrder: 5 },
+      { code: 'outdoors', name: '户外', displayOrder: 6 },
+      { code: 'fashion', name: '穿搭', displayOrder: 7 },
+      { code: 'food', name: '美食', displayOrder: 8 },
+      { code: 'workplace', name: '职场', displayOrder: 9 },
+      { code: 'relationships', name: '情感', displayOrder: 10 },
+      { code: 'home', name: '家居', displayOrder: 11 },
+      { code: 'travel', name: '旅行', displayOrder: 12 },
+      { code: 'other', name: '其它', displayOrder: 13 },
+    ],
+  });
+}
+
 describe('Home', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', '/');
@@ -50,11 +70,13 @@ describe('Home', () => {
     navigation.replace.mockReset();
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: string | URL | Request) =>
-        String(input).includes('/notes/recommendations')
-          ? emptyNotes()
-          : guestSession(),
-      ) as unknown as typeof fetch,
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/channels')) return channelList();
+        if (url.includes('/notes/channels/')) return emptyNotes();
+        if (url.includes('/notes/recommendations')) return emptyNotes();
+        return guestSession();
+      }) as unknown as typeof fetch,
     );
   });
 
@@ -78,7 +100,7 @@ describe('Home', () => {
     expect(
       screen.getByRole('navigation', { name: '内容频道' }),
     ).toHaveTextContent(
-      '推荐数码汽车游戏运动健身户外穿搭美食职场情感家居旅行视频',
+      '推荐数码汽车游戏运动健身户外穿搭美食职场情感家居旅行其它',
     );
     expect(screen.getAllByRole('button', { name: '登录' })).toHaveLength(1);
     expect(document.querySelectorAll('.note-card')).toHaveLength(0);
@@ -100,6 +122,78 @@ describe('Home', () => {
     expect(screen.getByRole('status')).toHaveTextContent('功能开发中');
   });
 
+  it('drives channel feeds from the URL and restores browser history state', async () => {
+    render(<Home />);
+    await screen.findByText('还没有笔记，发布第一篇内容吧');
+
+    fireEvent.click(screen.getByRole('button', { name: '数码' }));
+    expect(window.location.search).toBe('?channel=digital');
+    expect(screen.getByRole('button', { name: '数码' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(await screen.findByText('该频道还没有笔记')).toBeVisible();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/notes/channels/digital?limit=20'),
+      expect.objectContaining({ credentials: 'include' }),
+    );
+
+    window.history.replaceState(null, '', '/?channel=automotive');
+    fireEvent(window, new PopStateEvent('popstate'));
+    expect(screen.getByRole('button', { name: '汽车' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(window.location.search).toBe('?channel=automotive');
+
+    window.history.replaceState(null, '', '/');
+    fireEvent(window, new PopStateEvent('popstate'));
+    expect(screen.getByRole('button', { name: '推荐' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+
+  it('does not substitute recommendation data for an invalid channel URL', async () => {
+    window.history.replaceState(null, '', '/?channel=uncategorized');
+    render(<Home />);
+
+    expect(await screen.findByText('频道不存在或已停用')).toBeVisible();
+    expect(screen.queryByText('还没有笔记，发布第一篇内容吧')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '返回推荐' }));
+    expect(window.location.search).toBe('');
+    expect(
+      await screen.findByText('还没有笔记，发布第一篇内容吧'),
+    ).toBeVisible();
+  });
+
+  it('shows and retries an authoritative channel-list failure', async () => {
+    let channelAttempts = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/channels')) {
+          channelAttempts += 1;
+          return channelAttempts === 1
+            ? response({ code: 'INTERNAL_ERROR' }, 500)
+            : channelList();
+        }
+        if (url.endsWith('/auth/session')) return guestSession();
+        if (url.includes('/notes/recommendations')) return emptyNotes();
+        throw new Error(`Unexpected URL: ${url}`);
+      }) as unknown as typeof fetch,
+    );
+    render(<Home />);
+
+    expect(await screen.findByText('频道加载失败，请重试')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    expect(
+      await screen.findByText('还没有笔记，发布第一篇内容吧'),
+    ).toBeVisible();
+    expect(channelAttempts).toBe(2);
+  });
+
   it('enforces agreement and email validation before sending a code', async () => {
     render(<Home />);
     await screen.findByText('还没有笔记，发布第一篇内容吧');
@@ -116,7 +210,7 @@ describe('Home', () => {
     fireEvent.click(screen.getByLabelText('同意用户协议与隐私政策'));
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }));
     expect(screen.getByRole('alert')).toHaveTextContent('请输入有效的邮箱地址');
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   it('shows sending state and starts the resend countdown after success', async () => {
@@ -125,6 +219,9 @@ describe('Home', () => {
       (input: string | URL | Request, init?: RequestInit) => {
         void init;
         const url = String(input);
+        if (url.endsWith('/channels')) {
+          return Promise.resolve(channelList());
+        }
         if (url.endsWith('/auth/session')) {
           return Promise.resolve(guestSession());
         }
@@ -180,6 +277,7 @@ describe('Home', () => {
     };
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
+      if (url.endsWith('/channels')) return channelList();
       if (url.endsWith('/auth/session')) return guestSession();
       if (url.includes('/notes/recommendations')) return emptyNotes();
       if (url.endsWith('/auth/email-code/verify')) {
@@ -225,6 +323,9 @@ describe('Home', () => {
     });
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = String(input);
+      if (url.endsWith('/channels')) {
+        return Promise.resolve(channelList());
+      }
       if (url.endsWith('/auth/session')) return initialSessionPromise;
       if (url.includes('/notes/recommendations')) {
         return Promise.resolve(emptyNotes());
@@ -269,6 +370,7 @@ describe('Home', () => {
     };
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
+      if (url.endsWith('/channels')) return channelList();
       if (url.endsWith('/auth/session')) return guestSession();
       if (url.includes('/notes/recommendations')) return emptyNotes();
       if (url.endsWith('/auth/email-code/verify')) {
@@ -330,6 +432,9 @@ describe('Home', () => {
     });
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = String(input);
+      if (url.endsWith('/channels')) {
+        return Promise.resolve(channelList());
+      }
       if (url.endsWith('/auth/session')) return initialSessionPromise;
       if (url.includes('/notes/recommendations')) {
         return Promise.resolve(emptyNotes());
@@ -377,8 +482,10 @@ describe('Home', () => {
   it('restores an authenticated session without opening the modal', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: string | URL | Request) =>
-        String(input).includes('/notes/recommendations')
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/channels')) return channelList();
+        return url.includes('/notes/recommendations')
           ? emptyNotes()
           : response({
               authenticated: true,
@@ -388,8 +495,8 @@ describe('Home', () => {
                 nickname: '归航',
               },
               pendingRegistration: false,
-            }),
-      ) as unknown as typeof fetch,
+            });
+      }) as unknown as typeof fetch,
     );
 
     render(<Home />);
@@ -412,16 +519,18 @@ describe('Home', () => {
   it('restores the profile step for an unexpired registration credential', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: string | URL | Request) =>
-        String(input).includes('/notes/recommendations')
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/channels')) return channelList();
+        return url.includes('/notes/recommendations')
           ? emptyNotes()
           : response({
               authenticated: false,
               user: null,
               pendingRegistration: true,
               pendingEmail: 'pending@example.com',
-            }),
-      ) as unknown as typeof fetch,
+            });
+      }) as unknown as typeof fetch,
     );
 
     render(<Home />);
@@ -437,16 +546,18 @@ describe('Home', () => {
   it('returns an expired registration credential to email verification', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: string | URL | Request) =>
-        String(input).includes('/notes/recommendations')
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/channels')) return channelList();
+        return url.includes('/notes/recommendations')
           ? emptyNotes()
           : response({
               authenticated: false,
               user: null,
               pendingRegistration: false,
               registrationExpired: true,
-            }),
-      ) as unknown as typeof fetch,
+            });
+      }) as unknown as typeof fetch,
     );
 
     render(<Home />);
@@ -464,6 +575,7 @@ describe('Home', () => {
   it('shows the exact expired-registration message returned by the API', async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
+      if (url.endsWith('/channels')) return channelList();
       if (url.endsWith('/auth/session')) return guestSession();
       if (url.includes('/notes/recommendations')) return emptyNotes();
       if (url.endsWith('/auth/email-code/verify')) {
@@ -541,6 +653,7 @@ describe('Home', () => {
   it('shows the exact remaining-attempt error returned by the API', async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
+      if (url.endsWith('/channels')) return channelList();
       if (url.endsWith('/auth/session')) return guestSession();
       if (url.includes('/notes/recommendations')) return emptyNotes();
       if (url.endsWith('/auth/email-code/verify')) {

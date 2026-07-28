@@ -314,8 +314,8 @@ async function seedUsersAndSessions() {
   }
 }
 
-async function verifyLegacyUserMigration() {
-  const migrationDatabase = 'littlebluebook_profile_migration_e2e';
+async function verifyLegacyMigrations() {
+  const migrationDatabase = 'littlebluebook_legacy_migration_e2e';
   const baselineSql = readFileSync(
     path.join(
       repoRoot,
@@ -338,6 +338,37 @@ async function verifyLegacyUserMigration() {
     ),
     'utf8',
   );
+  const contentSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260726000200_add_content_notes',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const channelSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260727000100_add_note_channels',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const channelSeedStart = channelSql.indexOf('INSERT INTO "channels"');
+  const channelSeedEnd = channelSql.indexOf(
+    '-- Add the relation as nullable',
+    channelSeedStart,
+  );
+  if (channelSeedStart < 0 || channelSeedEnd < 0) {
+    throw new Error('Unable to locate the idempotent channel seed statement.');
+  }
+  const channelSeedSql = channelSql.slice(channelSeedStart, channelSeedEnd);
   const psql = (...args) =>
     run(
       dockerCommand,
@@ -388,6 +419,46 @@ async function verifyLegacyUserMigration() {
     '-v',
     'ON_ERROR_STOP=1',
     '-c',
+    contentSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    `INSERT INTO "notes"
+      ("id", "authorId", "title", "content", "clientRequestId",
+       "createdAt", "updatedAt")
+    VALUES
+      ('00000000-0000-4000-8000-000000000098',
+       '00000000-0000-4000-8000-000000000099',
+       '迁移前标题', '迁移前正文',
+       '00000000-0000-4000-8000-000000000097',
+       '2026-07-26T00:00:00.000Z', '2026-07-26T00:00:00.000Z');`,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    channelSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    channelSeedSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
     `DO $$ BEGIN
       IF NOT EXISTS (
         SELECT 1 FROM "users"
@@ -396,6 +467,34 @@ async function verifyLegacyUserMigration() {
           AND "gender" = 'PRIVATE'
       ) THEN
         RAISE EXCEPTION 'SPEC-003 legacy profile backfill failed';
+      END IF;
+      IF (SELECT count(*) FROM "channels"
+          WHERE "isPublic" AND "enabled" AND "publishable") <> 13 THEN
+        RAISE EXCEPTION 'SPEC-006 public channel seed failed';
+      END IF;
+      IF (SELECT count(*) FROM "channels") <> 14 THEN
+        RAISE EXCEPTION 'SPEC-006 channel seed is not idempotent';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1
+        FROM "notes" n
+        JOIN "channels" c ON c."id" = n."channelId"
+        WHERE n."id" = '00000000-0000-4000-8000-000000000098'
+          AND n."title" = '迁移前标题'
+          AND n."content" = '迁移前正文'
+          AND n."createdAt" = '2026-07-26T00:00:00.000Z'
+          AND c."code" = 'uncategorized'
+          AND NOT c."isPublic"
+          AND NOT c."publishable"
+      ) THEN
+        RAISE EXCEPTION 'SPEC-006 legacy note backfill failed';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE tablename = 'notes'
+          AND indexname = 'notes_channelId_createdAt_id_idx'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-006 channel cursor index missing';
       END IF;
     END $$;`,
   );
@@ -498,7 +597,7 @@ async function main() {
     { env: composeEnvironment },
   );
 
-  await verifyLegacyUserMigration();
+  await verifyLegacyMigrations();
   await runPnpm(['--filter', 'backend', 'db:deploy'], {
     env: applicationEnvironment,
   });

@@ -1,5 +1,8 @@
+import { HttpStatus } from '@nestjs/common';
+
 import { ApiException } from '../common/api-exception.js';
 import type { AuthService } from '../auth/auth.service.js';
+import type { ChannelsService } from '../channels/channels.service.js';
 import type { PrismaService } from '../database/prisma.service.js';
 import type { ImageValidatorService } from '../media/image-validator.service.js';
 import type { MediaStorage } from '../media/media.types.js';
@@ -15,6 +18,26 @@ const requestId = '00000000-0000-4000-8000-000000000002';
 
 function dependencies() {
   const auth = { currentUser: jest.fn(async () => user) };
+  const channels = {
+    requirePublishable: jest.fn(async (code: string) => ({
+      id: '00000000-0000-4000-8001-000000000001',
+      code,
+      name: '数码',
+      displayOrder: 1,
+      enabled: true,
+      publishable: true,
+      isPublic: true,
+    })),
+    requirePublic: jest.fn(async (code: string) => ({
+      id: '00000000-0000-4000-8001-000000000001',
+      code,
+      name: '数码',
+      displayOrder: 1,
+      enabled: true,
+      publishable: true,
+      isPublic: true,
+    })),
+  };
   const prisma = {
     note: {
       findUnique: jest.fn(async () => null),
@@ -54,12 +77,13 @@ function dependencies() {
   const redis = { eval: jest.fn(async () => 1) };
   const service = new NotesService(
     auth as unknown as AuthService,
+    channels as unknown as ChannelsService,
     prisma as unknown as PrismaService,
     validator as unknown as ImageValidatorService,
     media as MediaStorage,
     redis as unknown as RedisService,
   );
-  return { service, auth, prisma, validator, media, redis };
+  return { service, auth, channels, prisma, validator, media, redis };
 }
 
 describe('NotesService', () => {
@@ -80,6 +104,7 @@ describe('NotesService', () => {
         {
           title: ' 真实标题 ',
           content: ' 第一行\n第二行 ',
+          channelCode: 'digital',
           clientRequestId: requestId,
         },
         files,
@@ -91,6 +116,7 @@ describe('NotesService', () => {
     expect(prisma.note.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         authorId: user.id,
+        channelId: '00000000-0000-4000-8001-000000000001',
         title: '真实标题',
         content: '第一行\n第二行',
         clientRequestId: requestId,
@@ -112,7 +138,7 @@ describe('NotesService', () => {
   });
 
   it('returns the original result for a repeated client request without storing again', async () => {
-    const { service, prisma, validator, media } = dependencies();
+    const { service, channels, prisma, validator, media } = dependencies();
     (prisma.note.findUnique as jest.Mock).mockResolvedValueOnce({
       id: '00000000-0000-4000-8000-000000000099',
       createdAt: new Date('2026-07-26T13:00:00.000Z'),
@@ -121,7 +147,12 @@ describe('NotesService', () => {
     await expect(
       service.publish(
         'session-secret',
-        { title: '标题', content: '正文', clientRequestId: requestId },
+        {
+          title: '标题',
+          content: '正文',
+          channelCode: 'other',
+          clientRequestId: requestId,
+        },
         [],
       ),
     ).resolves.toEqual({
@@ -129,6 +160,7 @@ describe('NotesService', () => {
       createdAt: '2026-07-26T13:00:00.000Z',
     });
     expect(validator.validate).not.toHaveBeenCalled();
+    expect(channels.requirePublishable).not.toHaveBeenCalled();
     expect(media.save).not.toHaveBeenCalled();
     expect(prisma.note.create).not.toHaveBeenCalled();
   });
@@ -140,7 +172,12 @@ describe('NotesService', () => {
     await expect(
       service.publish(
         'session-secret',
-        { title: '标题', content: '正文', clientRequestId: requestId },
+        {
+          title: '标题',
+          content: '正文',
+          channelCode: 'digital',
+          clientRequestId: requestId,
+        },
         [],
       ),
     ).rejects.toThrow('database unavailable');
@@ -154,7 +191,12 @@ describe('NotesService', () => {
     await expect(
       service.publish(
         undefined,
-        { title: '标题', content: '正文', clientRequestId: requestId },
+        {
+          title: '标题',
+          content: '正文',
+          channelCode: 'digital',
+          clientRequestId: requestId,
+        },
         [],
       ),
     ).rejects.toBeInstanceOf(ApiException);
@@ -173,7 +215,12 @@ describe('NotesService', () => {
     await expect(
       service.publish(
         'session-secret',
-        { title: '标题', content: '正文', clientRequestId: requestId },
+        {
+          title: '标题',
+          content: '正文',
+          channelCode: 'digital',
+          clientRequestId: requestId,
+        },
         [],
       ),
     ).rejects.toMatchObject({
@@ -245,6 +292,12 @@ describe('NotesService', () => {
       content: '<script>alert(1)</script>\n第二行',
       createdAt: new Date('2026-07-26T12:00:00.000Z'),
       author: { nickname: '蓝书作者', email: 'private@example.com' },
+      channel: {
+        code: 'digital',
+        name: '数码',
+        enabled: true,
+        isPublic: true,
+      },
       images: [
         { objectKey: `${'a'.repeat(48)}.png`, width: 100, height: 120 },
         { objectKey: `${'b'.repeat(48)}.webp`, width: 90, height: 80 },
@@ -260,6 +313,11 @@ describe('NotesService', () => {
       comments: 0,
     });
     expect(result.content).toBe('<script>alert(1)</script>\n第二行');
+    expect(result.channel).toEqual({
+      code: 'digital',
+      name: '数码',
+      navigable: true,
+    });
     expect(JSON.stringify(result)).not.toContain('private@example.com');
   });
 
@@ -274,5 +332,71 @@ describe('NotesService', () => {
     await expect(service.detail('../../etc/passwd')).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'NOTE_NOT_FOUND' }),
     });
+  });
+
+  it('validates the channel before rate limiting or storing media', async () => {
+    const { service, channels, redis, validator, media } = dependencies();
+    (channels.requirePublishable as jest.Mock).mockRejectedValueOnce(
+      new ApiException(
+        HttpStatus.BAD_REQUEST,
+        'CHANNEL_INVALID',
+        '所选频道不存在或暂不可发布',
+      ),
+    );
+
+    await expect(
+      service.publish(
+        'session-secret',
+        {
+          title: '标题',
+          content: '正文',
+          channelCode: 'uncategorized',
+          clientRequestId: requestId,
+        },
+        [],
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'CHANNEL_INVALID' }),
+    });
+    expect(redis.eval).not.toHaveBeenCalled();
+    expect(validator.validate).not.toHaveBeenCalled();
+    expect(media.save).not.toHaveBeenCalled();
+  });
+
+  it('isolates channel feeds and rejects a recommendation cursor', async () => {
+    const { service, prisma } = dependencies();
+    (prisma.note.findMany as jest.Mock).mockResolvedValueOnce(
+      Array.from({ length: 21 }, (_, index) => ({
+        id: `00000000-0000-4000-8000-${String(index + 100).padStart(12, '0')}`,
+        title: `推荐${index}`,
+        createdAt: new Date(
+          `2026-07-${String(26 - index).padStart(2, '0')}T12:00:00.000Z`,
+        ),
+        author: { nickname: '蓝书作者' },
+        images: [
+          {
+            objectKey: `${String(index).padStart(48, 'b')}.png`,
+            width: 100,
+            height: 120,
+          },
+        ],
+      })),
+    );
+    const recommendation = await service.recommendations(undefined, 20);
+
+    await expect(
+      service.channel('digital', recommendation.nextCursor ?? undefined, 20),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'CURSOR_INVALID' }),
+    });
+
+    await service.channel('digital', undefined, 20);
+    expect(prisma.note.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          channelId: '00000000-0000-4000-8001-000000000001',
+        }),
+      }),
+    );
   });
 });

@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { NoteFeed } from './note-feed';
@@ -25,8 +31,42 @@ const firstNote = {
 describe('NoteFeed', () => {
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it('keeps the skeleton visible for 300ms before showing a fast empty feed', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        response({ items: [], nextCursor: null }),
+      ) as unknown as typeof fetch,
+    );
+
+    render(
+      <NoteFeed
+        endpoint="/notes/channels/digital"
+        label="数码频道内容"
+        emptyMessage="该频道还没有笔记"
+        errorMessage="频道内容加载失败"
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(screen.getByLabelText('数码频道内容')).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+    expect(screen.queryByText('该频道还没有笔记')).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(screen.getByText('该频道还没有笔记')).toBeVisible();
   });
 
   it('renders a keyboard-openable real note card with minimal fields', async () => {

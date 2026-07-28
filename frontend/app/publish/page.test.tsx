@@ -31,6 +31,25 @@ function imageFile(name: string, type = 'image/png', size = 4) {
   return new File([new Uint8Array(size)], name, { type });
 }
 
+const channels = {
+  items: [
+    { code: 'digital', name: '数码', displayOrder: 1 },
+    { code: 'automotive', name: '汽车', displayOrder: 2 },
+    { code: 'other', name: '其它', displayOrder: 13 },
+  ],
+};
+
+function authenticatedSession() {
+  return {
+    authenticated: true,
+    user: {
+      id: 'user-1',
+      email: 'private@example.com',
+      nickname: '蓝书作者',
+    },
+  };
+}
+
 describe('PublishPage', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/publish');
@@ -38,15 +57,12 @@ describe('PublishPage', () => {
     navigation.replace.mockReset();
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        response({
-          authenticated: true,
-          user: {
-            id: 'user-1',
-            email: 'private@example.com',
-            nickname: '蓝书作者',
-          },
-        }),
+      vi.fn(async (input: string | URL | Request) =>
+        response(
+          String(input).includes('/channels')
+            ? channels
+            : authenticatedSession(),
+        ),
       ) as unknown as typeof fetch,
     );
     vi.stubGlobal(
@@ -69,8 +85,12 @@ describe('PublishPage', () => {
   it('redirects an unauthenticated direct visit to homepage login continuation', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        response({ authenticated: false, user: null }),
+      vi.fn(async (input: string | URL | Request) =>
+        response(
+          String(input).includes('/channels')
+            ? channels
+            : { authenticated: false, user: null },
+        ),
       ) as unknown as typeof fetch,
     );
 
@@ -115,24 +135,43 @@ describe('PublishPage', () => {
     expect(screen.getByText('2/9')).toBeVisible();
   });
 
+  it('requires one server-provided channel and supports keyboard selection', async () => {
+    render(<PublishPage />);
+    await screen.findByRole('heading', { name: '发布图文笔记' });
+    const trigger = await screen.findByRole('button', { name: '选择频道' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText('必选')).toBeVisible();
+
+    fireEvent.click(trigger);
+    const digital = screen.getByRole('radio', { name: '数码' });
+    const automotive = screen.getByRole('radio', { name: '汽车' });
+    await waitFor(() => expect(digital).toHaveFocus());
+    fireEvent.keyDown(digital, { key: 'ArrowRight' });
+    expect(automotive).toHaveFocus();
+    fireEvent.keyDown(automotive, { key: 'Escape' });
+    await waitFor(() => expect(trigger).toHaveFocus());
+
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('radio', { name: '其它' }));
+    expect(trigger).toHaveTextContent('其它');
+    expect(screen.getByText('已选择，可在发布前更换')).toBeVisible();
+  });
+
   it('publishes one ordered multipart request and enters its detail', async () => {
     const fetchMock = vi.fn(
       async (input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
+        if (url.includes('/channels')) {
+          return response(channels);
+        }
         if (url.endsWith('/auth/session')) {
-          return response({
-            authenticated: true,
-            user: {
-              id: 'user-1',
-              email: 'private@example.com',
-              nickname: '蓝书作者',
-            },
-          });
+          return response(authenticatedSession());
         }
         if (url.endsWith('/notes') && init?.method === 'POST') {
           const body = init.body as FormData;
           expect(body.get('title')).toBe('测试标题');
           expect(body.get('content')).toBe('第一行\n第二行');
+          expect(body.get('channelCode')).toBe('digital');
           expect(body.getAll('images')).toHaveLength(2);
           expect(body.get('clientRequestId')).toMatch(/^[0-9a-f-]{36}$/i);
           return response(
@@ -159,6 +198,8 @@ describe('PublishPage', () => {
     fireEvent.change(screen.getByLabelText('正文'), {
       target: { value: ' 第一行\n第二行 ' },
     });
+    fireEvent.click(screen.getByRole('button', { name: '选择频道' }));
+    fireEvent.click(screen.getByRole('radio', { name: '数码' }));
     const submit = screen.getByRole('button', { name: '发布笔记' });
     expect(submit).toBeEnabled();
     fireEvent.click(submit);
@@ -184,15 +225,11 @@ describe('PublishPage', () => {
     const fetchMock = vi.fn(
       async (input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
+        if (url.includes('/channels')) {
+          return response(channels);
+        }
         if (url.endsWith('/auth/session')) {
-          return response({
-            authenticated: true,
-            user: {
-              id: 'user-1',
-              email: 'private@example.com',
-              nickname: '蓝书作者',
-            },
-          });
+          return response(authenticatedSession());
         }
         if (url.endsWith('/notes') && init?.method === 'POST') {
           return response(
@@ -220,19 +257,59 @@ describe('PublishPage', () => {
     fireEvent.change(screen.getByLabelText('正文'), {
       target: { value: '会被保留的正文' },
     });
+    fireEvent.click(screen.getByRole('button', { name: '选择频道' }));
+    fireEvent.click(screen.getByRole('radio', { name: '汽车' }));
     fireEvent.click(screen.getByRole('button', { name: '发布笔记' }));
 
     expect(
       await screen.findByRole('dialog', { name: '邮箱登录' }),
     ).toBeVisible();
-    expect(document.documentElement.style.overflow).toBe('hidden');
-    expect(document.body.style.overflow).toBe('hidden');
+    await waitFor(() => {
+      expect(document.documentElement.style.overflow).toBe('hidden');
+      expect(document.body.style.overflow).toBe('hidden');
+    });
     expect(screen.getByLabelText('标题')).toHaveValue('会被保留的标题');
     expect(screen.getByLabelText('正文')).toHaveValue('会被保留的正文');
+    expect(screen.getByRole('button', { name: /汽车/ })).toHaveTextContent(
+      '汽车',
+    );
     expect(screen.getByAltText('第1张预览')).toHaveAttribute(
       'src',
       'blob:kept.png',
     );
+  });
+
+  it('keeps the draft while retrying a channel-list failure', async () => {
+    let channelAttempts = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('/channels')) {
+          channelAttempts += 1;
+          return channelAttempts === 1
+            ? response({ code: 'INTERNAL_ERROR' }, 500)
+            : response(channels);
+        }
+        if (url.endsWith('/auth/session')) {
+          return response(authenticatedSession());
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      }) as unknown as typeof fetch,
+    );
+    render(<PublishPage />);
+    await screen.findByRole('heading', { name: '发布图文笔记' });
+    fireEvent.change(screen.getByLabelText('标题'), {
+      target: { value: '保留的草稿' },
+    });
+
+    expect(await screen.findByText('频道加载失败，请重试')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    expect(
+      await screen.findByRole('button', { name: '选择频道' }),
+    ).toBeVisible();
+    expect(screen.getByLabelText('标题')).toHaveValue('保留的草稿');
+    expect(channelAttempts).toBe(2);
   });
 
   it('warns before leaving a dirty form through in-app navigation', async () => {

@@ -13,6 +13,7 @@ import {
 
 import { Icon } from './_components/icon';
 import { NoteFeed } from './_components/note-feed';
+import type { PublicChannel, PublicChannelList } from './_lib/channels';
 import { lockDocumentScroll } from './_lib/document-scroll-lock';
 
 const API_BASE_URL =
@@ -53,23 +54,6 @@ const menuItems = [
   ['publish', '发布'],
   ['notice', '通知'],
 ] as const;
-
-const channels = [
-  '推荐',
-  '数码',
-  '汽车',
-  '游戏',
-  '运动',
-  '健身',
-  '户外',
-  '穿搭',
-  '美食',
-  '职场',
-  '情感',
-  '家居',
-  '旅行',
-  '视频',
-];
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
@@ -153,6 +137,14 @@ export default function Home() {
   const [countdown, setCountdown] = useState(0);
   const [registrationExpiredNotice, setRegistrationExpiredNotice] =
     useState(false);
+  const [channels, setChannels] = useState<PublicChannel[]>([]);
+  const [channelsLoading, setChannelsLoading] = useState(true);
+  const [channelsFailed, setChannelsFailed] = useState(false);
+  const [channelsReloadVersion, setChannelsReloadVersion] = useState(0);
+  const [activeChannelCode, setActiveChannelCode] = useState<string | null>(
+    null,
+  );
+  const [channelUrlReady, setChannelUrlReady] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const loginButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -162,6 +154,38 @@ export default function Home() {
   const showComingSoon = useCallback(() => {
     setToast('功能开发中');
   }, []);
+
+  useEffect(() => {
+    const syncFromUrl = () => {
+      const code = new URLSearchParams(window.location.search).get('channel');
+      setActiveChannelCode(code);
+      setChannelUrlReady(true);
+    };
+    syncFromUrl();
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void apiRequest<PublicChannelList>('/channels')
+      .then((result) => {
+        if (!active) return;
+        setChannels(result.items);
+        setChannelsFailed(result.items.length === 0);
+      })
+      .catch(() => {
+        if (!active) return;
+        setChannels([]);
+        setChannelsFailed(true);
+      })
+      .finally(() => {
+        if (active) setChannelsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [channelsReloadVersion]);
 
   useEffect(() => {
     const sessionRequestVersion = authStateVersionRef.current;
@@ -261,6 +285,12 @@ export default function Home() {
     }
   };
 
+  const selectChannel = (code: string | null) => {
+    const destination = code ? `/?channel=${encodeURIComponent(code)}` : '/';
+    window.history.pushState(null, '', destination);
+    setActiveChannelCode(code);
+  };
+
   useEffect(() => {
     const parameters = new URLSearchParams(window.location.search);
     if (parameters.get('login') !== '1') {
@@ -287,6 +317,17 @@ export default function Home() {
     destinationAfterAuthRef.current = null;
     window.setTimeout(() => loginButtonRef.current?.focus(), 0);
   }, []);
+
+  const activeChannel =
+    activeChannelCode === null
+      ? null
+      : channels.find((channel) => channel.code === activeChannelCode);
+  const invalidChannel =
+    channelUrlReady &&
+    !channelsLoading &&
+    !channelsFailed &&
+    activeChannelCode !== null &&
+    !activeChannel;
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -540,25 +581,83 @@ export default function Home() {
         </header>
 
         <nav className="channel-nav" aria-label="内容频道">
-          {channels.map((channel, index) => (
+          <button
+            type="button"
+            className={activeChannelCode === null ? 'selected' : ''}
+            aria-current={activeChannelCode === null ? 'page' : undefined}
+            onClick={() => selectChannel(null)}
+          >
+            推荐
+          </button>
+          {channels.map((channel) => (
             <button
-              key={channel}
+              key={channel.code}
               type="button"
-              className={index === 0 ? 'selected' : ''}
-              onClick={index === 0 ? undefined : showComingSoon}
+              className={activeChannelCode === channel.code ? 'selected' : ''}
+              aria-current={
+                activeChannelCode === channel.code ? 'page' : undefined
+              }
+              onClick={() => selectChannel(channel.code)}
             >
-              {channel}
+              {channel.name}
             </button>
           ))}
+          {channelsLoading ? (
+            <span className="channel-nav-status" aria-live="polite">
+              正在加载频道…
+            </span>
+          ) : null}
         </nav>
 
-        <NoteFeed
-          endpoint="/notes/recommendations"
-          label="推荐内容"
-          emptyMessage="还没有笔记，发布第一篇内容吧"
-          errorMessage="推荐内容加载失败，请稍后重试"
-          onPublish={openPublish}
-        />
+        {!channelUrlReady || channelsLoading ? (
+          <section className="feed-state" aria-busy="true">
+            <span>正在加载频道…</span>
+          </section>
+        ) : channelsFailed ? (
+          <section className="feed-state feed-error-state">
+            <Icon name="empty" size={46} />
+            <p role="alert">频道加载失败，请重试</p>
+            <button
+              type="button"
+              onClick={() => {
+                setChannelsLoading(true);
+                setChannelsFailed(false);
+                setChannelsReloadVersion((value) => value + 1);
+              }}
+            >
+              重试
+            </button>
+          </section>
+        ) : invalidChannel ? (
+          <section className="feed-state feed-error-state">
+            <Icon name="empty" size={46} />
+            <p role="alert">频道不存在或已停用</p>
+            <button type="button" onClick={() => selectChannel(null)}>
+              返回推荐
+            </button>
+          </section>
+        ) : (
+          <NoteFeed
+            key={activeChannel?.code ?? 'recommendations'}
+            endpoint={
+              activeChannel
+                ? `/notes/channels/${encodeURIComponent(activeChannel.code)}`
+                : '/notes/recommendations'
+            }
+            label={activeChannel ? `${activeChannel.name}频道内容` : '推荐内容'}
+            emptyMessage={
+              activeChannel
+                ? '该频道还没有笔记'
+                : '还没有笔记，发布第一篇内容吧'
+            }
+            errorMessage={
+              activeChannel
+                ? '频道内容加载失败，请稍后重试'
+                : '推荐内容加载失败，请稍后重试'
+            }
+            onPublish={activeChannel ? undefined : openPublish}
+          />
+        )}
       </main>
 
       {toast ? (

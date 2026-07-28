@@ -34,6 +34,9 @@ function validationMessage(errors: ValidationError[]): string {
   if (fields.has('content')) {
     return '正文需为1～2000个字符';
   }
+  if (fields.has('channelCode')) {
+    return '请选择有效频道';
+  }
   if (fields.has('clientRequestId')) {
     return '发布请求标识无效';
   }
@@ -41,6 +44,28 @@ function validationMessage(errors: ValidationError[]): string {
     return '分页参数无效';
   }
   return '请求参数无效';
+}
+
+function allowedFrontendOrigins(
+  configuredOrigin: string,
+  environment: AppEnvironment['NODE_ENV'],
+): string | string[] {
+  if (environment === 'production') {
+    return configuredOrigin;
+  }
+
+  const origin = new URL(configuredOrigin);
+  const origins = new Set([origin.origin]);
+
+  if (origin.hostname === '127.0.0.1') {
+    origin.hostname = 'localhost';
+    origins.add(origin.origin);
+  } else if (origin.hostname === 'localhost') {
+    origin.hostname = '127.0.0.1';
+    origins.add(origin.origin);
+  }
+
+  return [...origins];
 }
 
 export function configureApplication(app: INestApplication): void {
@@ -52,7 +77,10 @@ export function configureApplication(app: INestApplication): void {
     app.getHttpAdapter().getInstance().set('trust proxy', trustProxyHops);
   }
   app.enableCors({
-    origin: config.getOrThrow('FRONTEND_ORIGIN'),
+    origin: allowedFrontendOrigins(
+      config.getOrThrow('FRONTEND_ORIGIN'),
+      config.getOrThrow('NODE_ENV'),
+    ),
     credentials: true,
   });
   app.useGlobalFilters(new ApiExceptionFilter());

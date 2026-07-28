@@ -58,6 +58,74 @@ async function rootLayout(page: Page) {
   }));
 }
 
+async function publishRootLayout(page: Page) {
+  return page.evaluate(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const shell = document.querySelector<HTMLElement>('.publish-shell');
+    const topbar = document.querySelector<HTMLElement>('.publish-topbar');
+    const publishPage = document.querySelector<HTMLElement>('.publish-page');
+    const mediaPanel = document.querySelector<HTMLElement>(
+      '.publish-media-panel',
+    );
+    const copyPanel = document.querySelector<HTMLElement>(
+      '.publish-copy-panel',
+    );
+    if (!shell || !topbar || !publishPage || !mediaPanel || !copyPanel) {
+      throw new Error('Expected the complete publish page layout.');
+    }
+    const box = (element: HTMLElement) => {
+      const bounds = element.getBoundingClientRect();
+      const styles = getComputedStyle(element);
+      return {
+        top: bounds.top,
+        bottom: bounds.bottom,
+        height: bounds.height,
+        clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+        minHeight: styles.minHeight,
+        marginTop: styles.marginTop,
+        marginBottom: styles.marginBottom,
+        paddingTop: styles.paddingTop,
+        paddingBottom: styles.paddingBottom,
+      };
+    };
+    const optionalBox = (selector: string) => {
+      const element = document.querySelector<HTMLElement>(selector);
+      return element ? box(element) : null;
+    };
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      html: {
+        clientHeight: html.clientHeight,
+        scrollHeight: html.scrollHeight,
+      },
+      body: {
+        clientHeight: body.clientHeight,
+        scrollHeight: body.scrollHeight,
+        offsetHeight: body.offsetHeight,
+      },
+      shell: box(shell),
+      topbar: box(topbar),
+      publishPage: box(publishPage),
+      mediaPanel: box(mediaPanel),
+      copyPanel: box(copyPanel),
+      mediaHeading: optionalBox(
+        '.publish-media-panel .publish-section-heading',
+      ),
+      dropzone: optionalBox('.upload-dropzone'),
+      copyHeading: optionalBox('.publish-copy-panel .publish-section-heading'),
+      titleField: optionalBox('.publish-copy-panel .publish-field'),
+      contentField: optionalBox(
+        '.publish-copy-panel .publish-field:nth-of-type(2)',
+      ),
+      channelPicker: optionalBox('.channel-picker'),
+      topic: optionalBox('.topic-placeholder'),
+      submit: optionalBox('.publish-submit'),
+    };
+  });
+}
+
 function expectNoRootOverflow(
   layout: Awaited<ReturnType<typeof rootLayout>>,
 ): void {
@@ -208,7 +276,16 @@ test('keeps short root pages fitted while continuously resizing', async ({
   ).toBeVisible();
   for (const viewport of representativeViewports) {
     await page.setViewportSize(viewport);
-    expectNoRootOverflow(await rootLayout(page));
+    const layout = await publishRootLayout(page);
+    if (viewport === representativeViewports[0]) {
+      console.info(
+        `SPEC-005 publish minimum viewport geometry: ${JSON.stringify(layout)}`,
+      );
+    }
+    expect(
+      layout.html.scrollHeight - layout.html.clientHeight,
+      `unexpected publish root overflow: ${JSON.stringify(layout)}`,
+    ).toBeLessThanOrEqual(1);
   }
 });
 
