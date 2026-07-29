@@ -20,7 +20,7 @@
 | 工程基础 | 已确认 | Node.js 24（确认时为 Active LTS）、pnpm 11 Workspace、TypeScript；前后端保留独立目录 |
 | 前端 | 已确认基础栈 | Next.js 16 App Router、React 19、TypeScript、Tailwind CSS 4；状态管理和业务 UI 组件方案待具体功能确认 |
 | 后端 | 已确认基础栈 | NestJS 11、TypeScript、REST、OpenAPI、模块化单体；具体业务模块边界待相关 Spec 确认 |
-| 数据 | 部分确认 | PostgreSQL 18、Prisma ORM 7、Redis 8；搜索能力待确认 |
+| 数据 | 已确认基础栈 | PostgreSQL 18、Prisma ORM 7、Redis 8；首期搜索使用 PostgreSQL `pg_trgm` 与 GIN 索引 |
 | 媒体存储 | 已确认初期方案 | 本地持久化存储；通过可替换的存储抽象隔离业务代码；未来按需要迁移至 S3 兼容对象存储和 CDN |
 | 身份与权限 | 待确认 | 认证方式、授权模型、会话策略 |
 | 测试 | 已确认 | 前端 Vitest 4，后端 Jest 30，端到端 Playwright 1；采用分层本地验证，初次独立验收承担一次完整 Browser E2E |
@@ -70,6 +70,16 @@
 - 普通浏览器业务回归以 Chromium 为主，Firefox 和 WebKit 用于浏览器差异风险明显的关键场景；
 - 测试报告必须如实记录未运行项和分层依据，不得将未运行描述为通过；
 - 常规 CI 范围不变，仍不安装浏览器、不运行 Browser E2E。
+
+## 已确认的首期搜索技术基线
+
+- PostgreSQL 是首期笔记和用户搜索的唯一真实来源；
+- 使用可信扩展 `pg_trgm` 和必要的 GIN trigram 索引支持中文子串及英文大小写不敏感的包含搜索；
+- 搜索查询必须参数化，并使用稳定游标分页；
+- 首期不引入 Elasticsearch、OpenSearch、Meilisearch 或其他独立搜索服务；
+- 首期不使用 Redis 保存搜索索引或搜索结果缓存；
+- 搜索数据量、相关性、中文分词或性能需求显著增长后，再依据生产指标复审独立搜索服务；
+- 具体字段、排序、公开边界和验收要求由 `specs/spec-008-content-search/spec.md` 定义。
 
 ## 已确认的初期部署目标
 

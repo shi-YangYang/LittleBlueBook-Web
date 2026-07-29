@@ -14,6 +14,7 @@ import {
 import { AuthDialog } from '../_components/auth-dialog';
 import { Icon } from '../_components/icon';
 import { NoteFeed } from '../_components/note-feed';
+import { SearchTrigger } from '../_components/search-dialog';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3001/api/v1';
@@ -326,15 +327,7 @@ export default function ProfilePage() {
 
       <main className="content-shell profile-content-shell">
         <header className="topbar">
-          <button
-            className="search-box"
-            type="button"
-            onClick={showComingSoon}
-            aria-label="搜索，登录探索更多内容"
-          >
-            <span>登录探索更多内容</span>
-            <Icon name="search" size={23} />
-          </button>
+          <SearchTrigger />
           <div className="top-actions">
             <button type="button" onClick={showComingSoon}>
               创作中心

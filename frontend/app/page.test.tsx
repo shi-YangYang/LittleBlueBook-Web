@@ -109,14 +109,18 @@ describe('Home', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows the shared coming-soon feedback without navigation', async () => {
+  it('opens the shared search dialog and keeps unrelated placeholders unchanged', async () => {
     render(<Home />);
     await screen.findByText('还没有笔记，发布第一篇内容吧');
 
     fireEvent.click(
-      screen.getByRole('button', { name: '搜索，登录探索更多内容' }),
+      screen.getByRole('button', {
+        name: '搜索：搜索感兴趣的内容',
+      }),
     );
-    expect(screen.getByRole('status')).toHaveTextContent('功能开发中');
+    expect(
+      screen.getByRole('dialog', { name: '搜索小蓝书' }),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '业务合作' }));
     expect(screen.getByRole('status')).toHaveTextContent('功能开发中');
@@ -503,6 +507,55 @@ describe('Home', () => {
 
     expect(await screen.findByRole('link', { name: '我' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('does not flash the login action while restoring an authenticated session', async () => {
+    let resolveSession:
+      ((value: JsonResponse | PromiseLike<JsonResponse>) => void) | undefined;
+    const sessionPromise = new Promise<JsonResponse>((resolve) => {
+      resolveSession = resolve;
+    });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/channels')) return channelList();
+        if (url.includes('/notes/recommendations')) return emptyNotes();
+        if (url.endsWith('/auth/session')) return sessionPromise;
+        return guestSession();
+      }) as unknown as typeof fetch,
+    );
+
+    render(<Home />);
+
+    expect(
+      screen.queryByRole('button', { name: '登录' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('session-entry-placeholder')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveSession?.(
+        response({
+          authenticated: true,
+          user: {
+            id: 'user-delayed-session',
+            email: 'delayed@example.com',
+            nickname: '归航',
+          },
+          pendingRegistration: false,
+        }),
+      );
+      await sessionPromise;
+    });
+
+    expect(await screen.findByRole('link', { name: '我' })).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('session-entry-placeholder'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '登录' }),
+    ).not.toBeInTheDocument();
   });
 
   it('automatically opens login after a protected-route redirect', async () => {

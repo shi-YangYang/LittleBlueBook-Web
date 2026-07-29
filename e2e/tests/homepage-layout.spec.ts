@@ -14,7 +14,7 @@ test('matches the configured 3/4/5-column viewport matrix', async ({
 
   await expect(page.getByLabel('主菜单')).toBeVisible();
   await expect(
-    page.getByRole('button', { name: '搜索，登录探索更多内容' }),
+    page.getByRole('button', { name: '搜索：搜索感兴趣的内容' }),
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: '登录', exact: true }),

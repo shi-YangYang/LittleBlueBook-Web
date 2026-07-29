@@ -13,6 +13,7 @@
 | SPEC-005 | 页面高度与滚动模型自适应改造 | Accepted | `spec-005-adaptive-height-and-scroll/` |
 | SPEC-006 | 笔记频道 | Accepted | `spec-006-note-channels/` |
 | SPEC-007 | 点赞、收藏、评论与关注 | Accepted | `spec-007-social-interactions/` |
+| SPEC-008 | 内容与用户搜索 | Accepted | `spec-008-content-search/` |
 
 ## 状态说明
 

@@ -256,8 +256,10 @@ test('resumes anonymous card like after email login and exposes personal lists',
     .fill('social-viewer@example.com');
   await loginDialog.getByLabel('同意用户协议与隐私政策').check();
   await page.getByRole('button', { name: '获取验证码' }).click();
+  await expect(page.getByRole('status')).toContainText('验证码已发送');
   await loginDialog.getByRole('textbox', { name: '验证码' }).fill('246810');
   await page.getByRole('button', { name: '登录/注册' }).click();
+  await expect(loginDialog).toBeHidden();
   await expect(
     card.getByRole('button', { name: /取消点赞，当前 1/ }),
   ).toBeVisible();

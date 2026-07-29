@@ -53,11 +53,17 @@ export function NoteFeed({
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const readPage = useCallback(
-    async (nextCursor?: string): Promise<NotePageData | null> => {
+    async (
+      nextCursor?: string,
+      signal?: AbortSignal,
+    ): Promise<NotePageData | null> => {
       const query = new URLSearchParams({ limit: '20' });
       if (nextCursor) query.set('cursor', nextCursor);
       try {
-        return await apiRequest<NotePageData>(`${endpoint}?${query}`);
+        return await apiRequest<NotePageData>(
+          `${endpoint}${endpoint.includes('?') ? '&' : '?'}${query}`,
+          { signal },
+        );
       } catch (error) {
         if (
           error instanceof ApiRequestError &&
@@ -74,6 +80,7 @@ export function NoteFeed({
   );
 
   useEffect(() => {
+    const controller = new AbortController();
     let active = true;
     void Promise.resolve().then(async () => {
       if (!active) return;
@@ -84,12 +91,17 @@ export function NoteFeed({
       setItems([]);
       setCursor(null);
       try {
-        const page = await readPage();
+        const page = await readPage(undefined, controller.signal);
         if (!active || !page) return;
         setItems(page.items);
         setCursor(page.nextCursor);
-      } catch {
-        if (active) setInitialError(true);
+      } catch (error) {
+        if (
+          active &&
+          !(error instanceof Error && error.name === 'AbortError')
+        ) {
+          setInitialError(true);
+        }
       } finally {
         const remainingLoadingTime =
           INITIAL_LOADING_MINIMUM_MS - (Date.now() - loadingStartedAt);
@@ -103,6 +115,7 @@ export function NoteFeed({
     });
     return () => {
       active = false;
+      controller.abort();
     };
   }, [readPage, reloadVersion]);
 

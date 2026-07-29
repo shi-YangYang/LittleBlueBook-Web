@@ -13,11 +13,13 @@ import {
 
 import { Icon } from './_components/icon';
 import { NoteFeed } from './_components/note-feed';
+import { SearchTrigger } from './_components/search-dialog';
 import type { PublicChannel, PublicChannelList } from './_lib/channels';
 import { lockDocumentScroll } from './_lib/document-scroll-lock';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3001/api/v1';
+const SESSION_ENTRY_GRACE_MS = 250;
 
 type User = {
   id: string;
@@ -125,6 +127,8 @@ export default function Home() {
   const [modalOpen, setModalOpen] = useState(false);
   const [step, setStep] = useState<ModalStep>('verify');
   const [user, setUser] = useState<User | null>(null);
+  const [sessionResolved, setSessionResolved] = useState(false);
+  const [sessionGraceElapsed, setSessionGraceElapsed] = useState(false);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [nickname, setNickname] = useState('');
@@ -218,11 +222,23 @@ export default function Home() {
           return;
         }
         setUser(null);
+      })
+      .finally(() => {
+        if (active) {
+          setSessionResolved(true);
+        }
       });
 
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSessionGraceElapsed(true);
+    }, SESSION_ENTRY_GRACE_MS);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -534,7 +550,13 @@ export default function Home() {
             </button>
           ))}
 
-          {user ? (
+          {!sessionResolved && !sessionGraceElapsed ? (
+            <div
+              className="session-entry-placeholder"
+              aria-hidden="true"
+              data-testid="session-entry-placeholder"
+            />
+          ) : user ? (
             <div className="identity-wrap">
               <Link className="identity-button" href="/profile" aria-label="我">
                 <span className="identity-avatar" aria-hidden="true">
@@ -569,15 +591,7 @@ export default function Home() {
 
       <main className="content-shell">
         <header className="topbar">
-          <button
-            className="search-box"
-            type="button"
-            onClick={showComingSoon}
-            aria-label="搜索，登录探索更多内容"
-          >
-            <span>登录探索更多内容</span>
-            <Icon name="search" size={23} />
-          </button>
+          <SearchTrigger />
           <div className="top-actions">
             <button type="button" onClick={showComingSoon}>
               创作中心

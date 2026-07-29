@@ -63,6 +63,13 @@ describe('backend application', () => {
     );
     expect(response.body.paths).toHaveProperty('/api/v1/notes/mine');
     expect(response.body.paths).toHaveProperty('/api/v1/notes/{noteId}');
+    expect(response.body.paths).toHaveProperty('/api/v1/search/notes');
+    expect(response.body.paths).toHaveProperty('/api/v1/search/videos');
+    expect(response.body.paths).toHaveProperty('/api/v1/search/users');
+    expect(response.body.paths).toHaveProperty(
+      '/api/v1/users/{userId}/profile',
+    );
+    expect(response.body.paths).toHaveProperty('/api/v1/users/{userId}/notes');
     expect(response.body.paths).toHaveProperty('/api/v1/media/{objectKey}');
     expect(
       response.body.paths['/api/v1/notes'].post.requestBody.content[
@@ -181,6 +188,32 @@ describe('backend application', () => {
         message: expect.any(Object),
       }),
     );
+    expect(schemas.SearchUserCardDto.properties).toEqual(
+      expect.objectContaining({
+        id: expect.any(Object),
+        nickname: expect.any(Object),
+        littleBlueBookId: expect.any(Object),
+        avatar: expect.any(Object),
+        followers: expect.any(Object),
+        notes: expect.any(Object),
+        viewer: expect.any(Object),
+      }),
+    );
+    expect(schemas.SearchUserCardDto.properties).not.toHaveProperty('email');
+    expect(schemas.SearchUserCardDto.properties).not.toHaveProperty('age');
+    expect(schemas.PublicUserProfileDto.properties).toEqual(
+      expect.objectContaining({
+        id: expect.any(Object),
+        nickname: expect.any(Object),
+        littleBlueBookId: expect.any(Object),
+        gender: expect.any(Object),
+        avatar: expect.any(Object),
+        stats: expect.any(Object),
+        viewer: expect.any(Object),
+      }),
+    );
+    expect(schemas.PublicUserProfileDto.properties).not.toHaveProperty('email');
+    expect(schemas.PublicUserProfileDto.properties).not.toHaveProperty('age');
   });
 
   it('creates the Swagger document with the tsx development runtime', () => {

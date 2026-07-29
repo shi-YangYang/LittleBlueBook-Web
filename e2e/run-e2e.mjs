@@ -265,6 +265,18 @@ async function seedUsersAndSessions() {
       '互动访客',
       '0000000108',
     ],
+    [
+      '00000000-0000-4000-8000-000000000109',
+      'search-viewer@example.com',
+      '搜索蓝友',
+      '0000000109',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000110',
+      'search-author@example.com',
+      '搜索作者',
+      '0000000110',
+    ],
   ];
   const values = users
     .map(
@@ -303,6 +315,8 @@ async function seedUsersAndSessions() {
   const socialAuthorUserId = users[5][0];
   const socialViewerUserId = users[6][0];
   const socialThirdUserId = users[7][0];
+  const searchViewerUserId = users[8][0];
+  const searchAuthorUserId = users[9][0];
   const sessions = [
     ['spec002-device-a-session', multiDeviceUserId],
     ['spec002-device-b-session', multiDeviceUserId],
@@ -312,6 +326,8 @@ async function seedUsersAndSessions() {
     ['spec007-viewer-session', socialViewerUserId],
     ['spec007-author-session', socialAuthorUserId],
     ['spec007-third-session', socialThirdUserId],
+    ['spec008-viewer-session', searchViewerUserId],
+    ['spec008-author-session', searchAuthorUserId],
   ];
   for (const [sessionId, userId] of sessions) {
     const key =
@@ -391,6 +407,17 @@ async function verifyLegacyMigrations() {
       'prisma',
       'migrations',
       '20260728000100_add_social_interactions',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const searchSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260728000200_add_content_search',
       'migration.sql',
     ),
     'utf8',
@@ -481,6 +508,7 @@ async function verifyLegacyMigrations() {
     channelSql,
   );
   await psql('-d', migrationDatabase, '-v', 'ON_ERROR_STOP=1', '-c', socialSql);
+  await psql('-d', migrationDatabase, '-v', 'ON_ERROR_STOP=1', '-c', searchSql);
   await psql(
     '-d',
     migrationDatabase,
@@ -554,6 +582,30 @@ async function verifyLegacyMigrations() {
           AND indexname = 'note_comments_noteId_createdAt_id_idx'
       ) THEN
         RAISE EXCEPTION 'SPEC-007 comment cursor index missing';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-008 pg_trgm extension missing';
+      END IF;
+      IF (
+        SELECT count(*) FROM pg_indexes
+        WHERE indexname IN (
+          'notes_title_trgm_idx',
+          'notes_content_trgm_idx',
+          'users_nickname_trgm_idx',
+          'users_littleBlueBookId_trgm_idx'
+        )
+      ) <> 4 THEN
+        RAISE EXCEPTION 'SPEC-008 trigram indexes missing';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM "notes"
+        WHERE "id" = '00000000-0000-4000-8000-000000000098'
+          AND "title" = '迁移前标题'
+          AND "content" = '迁移前正文'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-008 migration changed legacy content';
       END IF;
     END $$;`,
   );

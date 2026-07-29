@@ -43,6 +43,9 @@ function validationMessage(errors: ValidationError[]): string {
   if (fields.has('cursor') || fields.has('limit')) {
     return '分页参数无效';
   }
+  if (fields.has('keyword')) {
+    return '搜索内容需为1～50个字符';
+  }
   return '请求参数无效';
 }
 
