@@ -37,6 +37,7 @@ export default function PublicUserPage() {
   const [followingBusy, setFollowingBusy] = useState(false);
   const [toast, setToast] = useState('');
   const pendingActionRef = useRef<(() => Promise<void>) | null>(null);
+  const pendingDestinationRef = useRef<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -145,7 +146,10 @@ export default function PublicUserPage() {
     <div className="home-shell public-profile-shell">
       <PageSidebar
         user={sessionUser}
-        onLogin={() => setAuthOpen(true)}
+        onLogin={(destination) => {
+          pendingDestinationRef.current = destination ?? null;
+          setAuthOpen(true);
+        }}
         onToast={setToast}
       />
       <main className="content-shell profile-content-shell">
@@ -280,10 +284,17 @@ export default function PublicUserPage() {
         onClose={() => {
           setAuthOpen(false);
           pendingActionRef.current = null;
+          pendingDestinationRef.current = null;
         }}
         onAuthenticated={(user) => {
           setSessionUser(user);
           setAuthOpen(false);
+          const destination = pendingDestinationRef.current;
+          pendingDestinationRef.current = null;
+          if (destination) {
+            router.push(destination);
+            return;
+          }
           const resume = pendingActionRef.current;
           pendingActionRef.current = null;
           if (resume) {

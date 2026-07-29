@@ -14,6 +14,7 @@ import {
 import { AuthDialog } from '../_components/auth-dialog';
 import { Icon } from '../_components/icon';
 import { NoteFeed } from '../_components/note-feed';
+import { NotificationNavItem } from '../_components/notification-nav-item';
 import { SearchTrigger } from '../_components/search-dialog';
 
 const API_BASE_URL =
@@ -24,7 +25,6 @@ const menuItems = [
   { icon: 'video', label: '视频' },
   { icon: 'live', label: '直播' },
   { icon: 'publish', label: '发布', href: '/publish' },
-  { icon: 'notice', label: '通知' },
 ] as const;
 
 const tabs = [
@@ -297,6 +297,10 @@ export default function ProfilePage() {
               </button>
             ),
           )}
+          <NotificationNavItem
+            authenticated={Boolean(profile)}
+            onLogin={() => setAuthOpen(true)}
+          />
 
           <div className="identity-wrap">
             <Link

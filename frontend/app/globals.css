@@ -131,6 +131,23 @@ textarea:focus-visible {
   font-weight: 700;
 }
 
+.notification-badge {
+  min-width: 22px;
+  height: 22px;
+  margin-left: auto;
+  padding: 0 6px;
+  border: 2px solid #fff;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .login-entry {
   height: 52px;
   margin-top: 8px;
@@ -958,6 +975,312 @@ textarea:focus-visible {
 
 .search-content-shell {
   padding-bottom: clamp(24px, 5dvh, 56px);
+}
+
+.notifications-content-shell {
+  padding-bottom: clamp(24px, 4dvh, 48px);
+}
+
+.notifications-page {
+  width: min(100%, 980px);
+  margin: 0 auto;
+}
+
+.notifications-heading {
+  min-height: clamp(76px, 11dvh, 96px);
+  padding: 10px 4px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.notifications-heading p,
+.notifications-heading h1 {
+  margin: 0;
+}
+
+.notifications-heading p {
+  color: #8b94a1;
+  font-size: 14px;
+}
+
+.notifications-heading h1 {
+  margin-top: 4px;
+  font-size: clamp(24px, 2.5vw, 31px);
+}
+
+.notifications-heading > button,
+.notification-state button,
+.notification-pagination button {
+  min-width: 104px;
+  min-height: 40px;
+  padding: 0 18px;
+  border: 1px solid #b7d4ff;
+  border-radius: 21px;
+  background: #fff;
+  color: var(--brand-pressed);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notifications-heading > button:disabled {
+  border-color: #e2e7ed;
+  color: #a5adb8;
+  cursor: default;
+}
+
+.notification-tabs {
+  position: sticky;
+  z-index: 8;
+  top: var(--topbar-height);
+  height: 58px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: stretch;
+  gap: clamp(18px, 4.5vw, 42px);
+  background: rgb(255 255 255 / 96%);
+  backdrop-filter: blur(12px);
+}
+
+.notification-tabs button {
+  position: relative;
+  min-width: 58px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: #626b77;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.notification-tabs button:hover,
+.notification-tabs button.active {
+  color: #1f2732;
+  font-weight: 700;
+}
+
+.notification-tabs button.active::after {
+  position: absolute;
+  right: 8px;
+  bottom: 0;
+  left: 8px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--brand);
+  content: '';
+}
+
+.notification-panel {
+  min-width: 0;
+}
+
+.notification-state {
+  min-height: clamp(230px, 42dvh, 410px);
+  padding: 30px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: #8b94a1;
+  text-align: center;
+}
+
+.notification-state p {
+  margin: 0;
+}
+
+.notification-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notification-list > li {
+  border-bottom: 1px solid #edf0f4;
+}
+
+.notification-row {
+  width: 100%;
+  min-height: 108px;
+  padding: 18px 12px;
+  border: 0;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  background: #fff;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.notification-row:hover {
+  background: #f8fbff;
+}
+
+.notification-row.unread {
+  background: #f4f8ff;
+}
+
+.notification-row:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.notification-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #55a3ff, #1267e5);
+  color: #fff;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.notification-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.notification-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #535d69;
+}
+
+.notification-main strong {
+  max-width: min(42%, 260px);
+  overflow: hidden;
+  color: #27303b;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-read-state {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 11px;
+  background: #edf0f4;
+  color: #737c88;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.notification-row.unread .notification-read-state {
+  background: #dbeaff;
+  color: var(--brand-pressed);
+}
+
+.notification-comment-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #555f6c;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.notification-unavailable {
+  color: #9a6670;
+  font-size: 13px;
+}
+
+.notification-copy time {
+  color: #929aa5;
+  font-size: 12px;
+}
+
+.notification-thumbnail {
+  width: 64px;
+  height: 78px;
+  border-radius: 9px;
+  display: block;
+  object-fit: cover;
+  background: #eef1f5;
+}
+
+.notification-thumbnail.unavailable {
+  display: grid;
+  place-items: center;
+  color: #9ba4af;
+}
+
+.notification-pagination {
+  min-height: 72px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #8b94a1;
+  font-size: 13px;
+}
+
+.notification-skeleton-list {
+  padding-top: 4px;
+}
+
+.notification-skeleton-row {
+  min-height: 94px;
+  padding: 17px 12px;
+  border-bottom: 1px solid #edf0f4;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 16px;
+}
+
+.notification-skeleton-row > span:first-child {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+}
+
+.notification-skeleton-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.notification-skeleton-row > div span {
+  width: min(68%, 360px);
+  height: 13px;
+  border-radius: 7px;
+}
+
+.notification-skeleton-row > div span:last-child {
+  width: min(42%, 220px);
+}
+
+.notification-skeleton-row > span:last-child {
+  width: 64px;
+  height: 64px;
+  border-radius: 9px;
+}
+
+.notification-skeleton-row span {
+  background:
+    linear-gradient(
+      100deg,
+      transparent 20%,
+      rgb(255 255 255 / 68%) 50%,
+      transparent 80%
+    ),
+    #edf1f5;
+  background-size: 220% 100%;
+  animation: profile-skeleton 1.25s ease-in-out infinite;
 }
 
 .search-page {
@@ -2836,6 +3159,22 @@ a.detail-channel-tag:hover {
 
   .auth-panel {
     min-height: 520px;
+  }
+}
+
+@media (max-width: 1199px) {
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    gap: 20px;
+  }
+
+  .top-actions {
+    gap: 18px;
+    padding-right: 0;
+  }
+
+  .top-actions button {
+    white-space: nowrap;
   }
 }
 

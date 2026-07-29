@@ -13,6 +13,7 @@ import {
 
 import { Icon } from './_components/icon';
 import { NoteFeed } from './_components/note-feed';
+import { NotificationNavItem } from './_components/notification-nav-item';
 import { SearchTrigger } from './_components/search-dialog';
 import type { PublicChannel, PublicChannelList } from './_lib/channels';
 import { lockDocumentScroll } from './_lib/document-scroll-lock';
@@ -54,7 +55,6 @@ const menuItems = [
   ['video', '视频'],
   ['live', '直播'],
   ['publish', '发布'],
-  ['notice', '通知'],
 ] as const;
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -294,6 +294,15 @@ export default function Home() {
     openModal();
   };
 
+  const openNotifications = () => {
+    if (user) {
+      window.location.assign('/notifications');
+      return;
+    }
+    destinationAfterAuthRef.current = '/notifications';
+    openModal();
+  };
+
   const continueAfterAuthentication = () => {
     const destination = destinationAfterAuthRef.current;
     destinationAfterAuthRef.current = null;
@@ -322,6 +331,8 @@ export default function Home() {
 
     if (parameters.get('next') === '/publish') {
       destinationAfterAuthRef.current = '/publish';
+    } else if (parameters.get('next') === '/notifications') {
+      destinationAfterAuthRef.current = '/notifications';
     }
     window.setTimeout(() => setModalOpen(true), 0);
     parameters.delete('login');
@@ -549,6 +560,10 @@ export default function Home() {
               <span>{label}</span>
             </button>
           ))}
+          <NotificationNavItem
+            authenticated={Boolean(user)}
+            onLogin={openNotifications}
+          />
 
           {!sessionResolved && !sessionGraceElapsed ? (
             <div

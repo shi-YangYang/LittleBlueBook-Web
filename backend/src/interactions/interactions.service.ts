@@ -48,11 +48,20 @@ export class InteractionsService {
 
     return this.prisma.$transaction(async (transaction) => {
       if (active) {
-        await transaction.noteLike.upsert({
-          where: { userId_noteId: { userId: user.id, noteId } },
-          create: { userId: user.id, noteId },
-          update: {},
+        const created = await transaction.noteLike.createMany({
+          data: [{ userId: user.id, noteId }],
+          skipDuplicates: true,
         });
+        if (created.count === 1) {
+          await transaction.notification.create({
+            data: {
+              type: 'NOTE_LIKED',
+              recipientId: note.authorId,
+              actorId: user.id,
+              noteId,
+            },
+          });
+        }
       } else {
         await transaction.noteLike.deleteMany({
           where: { userId: user.id, noteId },
@@ -71,15 +80,24 @@ export class InteractionsService {
     active: boolean,
   ): Promise<RelationshipResult> {
     const user = await this.requireUser(sessionId);
-    await this.requireNote(noteId);
+    const note = await this.requireNote(noteId);
 
     return this.prisma.$transaction(async (transaction) => {
       if (active) {
-        await transaction.noteFavorite.upsert({
-          where: { userId_noteId: { userId: user.id, noteId } },
-          create: { userId: user.id, noteId },
-          update: {},
+        const created = await transaction.noteFavorite.createMany({
+          data: [{ userId: user.id, noteId }],
+          skipDuplicates: true,
         });
+        if (created.count === 1 && note.authorId !== user.id) {
+          await transaction.notification.create({
+            data: {
+              type: 'NOTE_FAVORITED',
+              recipientId: note.authorId,
+              actorId: user.id,
+              noteId,
+            },
+          });
+        }
       } else {
         await transaction.noteFavorite.deleteMany({
           where: { userId: user.id, noteId },
@@ -116,19 +134,27 @@ export class InteractionsService {
       throw this.userNotFound();
     }
 
-    if (following) {
-      await this.prisma.userFollow.upsert({
-        where: {
-          followerId_followedId: { followerId: user.id, followedId },
-        },
-        create: { followerId: user.id, followedId },
-        update: {},
-      });
-    } else {
-      await this.prisma.userFollow.deleteMany({
-        where: { followerId: user.id, followedId },
-      });
-    }
+    await this.prisma.$transaction(async (transaction) => {
+      if (following) {
+        const created = await transaction.userFollow.createMany({
+          data: [{ followerId: user.id, followedId }],
+          skipDuplicates: true,
+        });
+        if (created.count === 1) {
+          await transaction.notification.create({
+            data: {
+              type: 'USER_FOLLOWED',
+              recipientId: followedId,
+              actorId: user.id,
+            },
+          });
+        }
+      } else {
+        await transaction.userFollow.deleteMany({
+          where: { followerId: user.id, followedId },
+        });
+      }
+    });
     return { following };
   }
 
@@ -224,6 +250,17 @@ export class InteractionsService {
           author: { select: { nickname: true } },
         },
       });
+      if (note.authorId !== user.id) {
+        await transaction.notification.create({
+          data: {
+            type: 'NOTE_COMMENTED',
+            recipientId: note.authorId,
+            actorId: user.id,
+            noteId,
+            commentId: comment.id,
+          },
+        });
+      }
       const total = await transaction.noteComment.count({ where: { noteId } });
       return {
         comment: this.toComment(comment, note.authorId, user.id),

@@ -7,6 +7,7 @@ import { validateEnvironment } from './config/environment.js';
 import { HealthModule } from './health/health.module.js';
 import { InteractionsModule } from './interactions/interactions.module.js';
 import { MediaModule } from './media/media.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 import { NotesModule } from './notes/notes.module.js';
 import { ProfileModule } from './profile/profile.module.js';
 import { SearchModule } from './search/search.module.js';
@@ -23,6 +24,7 @@ import { SearchModule } from './search/search.module.js';
     HealthModule,
     InteractionsModule,
     MediaModule,
+    NotificationsModule,
     NotesModule,
     ProfileModule,
     SearchModule,

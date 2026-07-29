@@ -15,21 +15,30 @@ enum Gender {
   PRIVATE
 }
 
+enum NotificationType {
+  NOTE_LIKED
+  NOTE_FAVORITED
+  NOTE_COMMENTED
+  USER_FOLLOWED
+}
+
 model User {
-  id               String         @id @default(uuid()) @db.Uuid
-  email            String         @unique @db.VarChar(320)
-  nickname         String         @db.VarChar(20)
-  littleBlueBookId String         @unique @db.VarChar(10)
-  gender           Gender         @default(PRIVATE)
-  createdAt        DateTime       @default(now()) @db.Timestamptz(3)
-  updatedAt        DateTime       @updatedAt @db.Timestamptz(3)
-  lastLoginAt      DateTime       @default(now()) @db.Timestamptz(3)
-  notes            Note[]
-  noteLikes        NoteLike[]
-  noteFavorites    NoteFavorite[]
-  comments         NoteComment[]
-  following        UserFollow[]   @relation("UserFollowing")
-  followers        UserFollow[]   @relation("UserFollowers")
+  id                    String         @id @default(uuid()) @db.Uuid
+  email                 String         @unique @db.VarChar(320)
+  nickname              String         @db.VarChar(20)
+  littleBlueBookId      String         @unique @db.VarChar(10)
+  gender                Gender         @default(PRIVATE)
+  createdAt             DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime       @updatedAt @db.Timestamptz(3)
+  lastLoginAt           DateTime       @default(now()) @db.Timestamptz(3)
+  notes                 Note[]
+  noteLikes             NoteLike[]
+  noteFavorites         NoteFavorite[]
+  comments              NoteComment[]
+  following             UserFollow[]   @relation("UserFollowing")
+  followers             UserFollow[]   @relation("UserFollowers")
+  receivedNotifications Notification[] @relation("NotificationRecipient")
+  actedNotifications    Notification[] @relation("NotificationActor")
 
   @@map("users")
 }
@@ -65,6 +74,7 @@ model Note {
   likes           NoteLike[]
   favorites       NoteFavorite[]
   comments        NoteComment[]
+  notifications   Notification[]
 
   @@unique([authorId, clientRequestId])
   @@index([createdAt(sort: Desc), id(sort: Desc)])
@@ -100,13 +110,14 @@ model NoteFavorite {
 }
 
 model NoteComment {
-  id        String   @id @default(uuid()) @db.Uuid
-  noteId    String   @db.Uuid
-  authorId  String   @db.Uuid
-  content   String   @db.VarChar(500)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  id            String         @id @default(uuid()) @db.Uuid
+  noteId        String         @db.Uuid
+  authorId      String         @db.Uuid
+  content       String         @db.VarChar(500)
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+  note          Note           @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  author        User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  notifications Notification[]
 
   @@index([noteId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([authorId])
@@ -139,4 +150,24 @@ model NoteImage {
 
   @@unique([noteId, order])
   @@map("note_images")
+}
+
+model Notification {
+  id          String           @id @default(uuid()) @db.Uuid
+  type        NotificationType
+  recipientId String           @db.Uuid
+  actorId     String?          @db.Uuid
+  noteId      String?          @db.Uuid
+  commentId   String?          @db.Uuid
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  readAt      DateTime?        @db.Timestamptz(3)
+  recipient   User             @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor       User?            @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  note        Note?            @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  comment     NoteComment?     @relation(fields: [commentId], references: [id], onDelete: SetNull)
+
+  @@index([recipientId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([recipientId, type, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([recipientId, readAt])
+  @@map("notifications")
 }

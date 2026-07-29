@@ -14,6 +14,7 @@
 | SPEC-006 | 笔记频道 | Accepted | `spec-006-note-channels/` |
 | SPEC-007 | 点赞、收藏、评论与关注 | Accepted | `spec-007-social-interactions/` |
 | SPEC-008 | 内容与用户搜索 | Accepted | `spec-008-content-search/` |
+| SPEC-009 | 互动通知中心 | Accepted | `spec-009-notification-center/` |
 
 ## 状态说明
 

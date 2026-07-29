@@ -5,6 +5,7 @@ import Link from 'next/link';
 
 import type { AuthenticatedUser } from './auth-dialog';
 import { Icon } from './icon';
+import { NotificationNavItem } from './notification-nav-item';
 import { SearchTrigger } from './search-dialog';
 
 const menuItems = [
@@ -12,13 +13,12 @@ const menuItems = [
   { icon: 'video', label: '视频' },
   { icon: 'live', label: '直播' },
   { icon: 'publish', label: '发布', href: '/publish' },
-  { icon: 'notice', label: '通知' },
 ] as const;
 
 type PageSidebarProps = {
   user: AuthenticatedUser | null;
-  active?: 'discover' | 'profile';
-  onLogin: () => void;
+  active?: 'discover' | 'profile' | 'notifications';
+  onLogin: (destination?: string) => void;
   onToast: (message: string) => void;
 };
 
@@ -53,7 +53,7 @@ export function PageSidebar({
                   className="nav-item"
                   type="button"
                   key={item.label}
-                  onClick={onLogin}
+                  onClick={() => onLogin('/publish')}
                 >
                   <Icon name={item.icon} />
                   <span>{item.label}</span>
@@ -82,6 +82,11 @@ export function PageSidebar({
             </button>
           ),
         )}
+        <NotificationNavItem
+          authenticated={Boolean(user)}
+          active={active === 'notifications'}
+          onLogin={onLogin}
+        />
         {user ? (
           <div className="identity-wrap">
             <Link
@@ -97,7 +102,11 @@ export function PageSidebar({
             </Link>
           </div>
         ) : (
-          <button className="login-entry" type="button" onClick={onLogin}>
+          <button
+            className="login-entry"
+            type="button"
+            onClick={() => onLogin()}
+          >
             登录
           </button>
         )}

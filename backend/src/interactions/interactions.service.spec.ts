@@ -24,17 +24,17 @@ function dependencies() {
       findUnique: jest.fn(async () => ({ id: noteId, authorId })),
     },
     noteLike: {
-      upsert: jest.fn(async () => ({})),
+      createMany: jest.fn(async () => ({ count: 1 })),
       deleteMany: jest.fn(async () => ({ count: 0 })),
       count: jest.fn(async () => 1),
     },
     noteFavorite: {
-      upsert: jest.fn(async () => ({})),
+      createMany: jest.fn(async () => ({ count: 1 })),
       deleteMany: jest.fn(async () => ({ count: 0 })),
       count: jest.fn(async () => 2),
     },
     userFollow: {
-      upsert: jest.fn(async () => ({})),
+      createMany: jest.fn(async () => ({ count: 1 })),
       deleteMany: jest.fn(async () => ({ count: 0 })),
     },
     noteComment: {
@@ -64,6 +64,9 @@ function dependencies() {
       })),
       delete: jest.fn(async () => ({})),
       count: jest.fn(async () => 1),
+    },
+    notification: {
+      create: jest.fn(async () => ({})),
     },
   };
   const prisma = {
@@ -101,15 +104,22 @@ describe('InteractionsService', () => {
       count: 1,
     });
 
-    expect(prisma.noteLike.upsert).toHaveBeenCalledWith({
-      where: { userId_noteId: { userId: viewer.id, noteId } },
-      create: { userId: viewer.id, noteId },
-      update: {},
+    expect(prisma.noteLike.createMany).toHaveBeenCalledWith({
+      data: [{ userId: viewer.id, noteId }],
+      skipDuplicates: true,
     });
     expect(prisma.noteLike.deleteMany).toHaveBeenCalledWith({
       where: { userId: viewer.id, noteId },
     });
-    expect(prisma.noteFavorite.upsert).toHaveBeenCalled();
+    expect(prisma.noteFavorite.createMany).toHaveBeenCalled();
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: {
+        type: 'NOTE_LIKED',
+        recipientId: authorId,
+        actorId: viewer.id,
+        noteId,
+      },
+    });
   });
 
   it('rejects self-like and self-follow while allowing self-favorite', async () => {
@@ -132,6 +142,29 @@ describe('InteractionsService', () => {
     await expect(
       service.setFavorite('session', noteId, true),
     ).resolves.toMatchObject({ active: true });
+    expect(prisma.notification.create).not.toHaveBeenCalled();
+  });
+
+  it('creates notifications only for real relationship transitions', async () => {
+    const { service, prisma } = dependencies();
+
+    await service.setLike('session', noteId, true);
+    await service.setFavorite('session', noteId, true);
+    await service.setFollow('session', authorId, true);
+    expect(prisma.notification.create).toHaveBeenCalledTimes(3);
+
+    prisma.notification.create.mockClear();
+    prisma.noteLike.createMany.mockResolvedValue({ count: 0 });
+    prisma.noteFavorite.createMany.mockResolvedValue({ count: 0 });
+    prisma.userFollow.createMany.mockResolvedValue({ count: 0 });
+
+    await service.setLike('session', noteId, true);
+    await service.setFavorite('session', noteId, true);
+    await service.setFollow('session', authorId, true);
+    await service.setLike('session', noteId, false);
+    await service.setFavorite('session', noteId, false);
+    await service.setFollow('session', authorId, false);
+    expect(prisma.notification.create).not.toHaveBeenCalled();
   });
 
   it('publishes normalized plain text and rejects invalid comment lengths', async () => {
@@ -157,6 +190,15 @@ describe('InteractionsService', () => {
         },
       }),
     );
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: {
+        type: 'NOTE_COMMENTED',
+        recipientId: authorId,
+        actorId: viewer.id,
+        noteId,
+        commentId,
+      },
+    });
     await expect(
       service.createComment('session', noteId, '   '),
     ).rejects.toMatchObject({
@@ -241,5 +283,17 @@ describe('InteractionsService', () => {
       response: expect.objectContaining({ code: 'AUTHENTICATION_REQUIRED' }),
     });
     expect(prisma.note.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('does not complete an interaction when transactional notification creation fails', async () => {
+    const { service, prisma } = dependencies();
+    prisma.notification.create.mockRejectedValue(
+      new Error('notification write failed'),
+    );
+
+    await expect(service.setLike('session', noteId, true)).rejects.toThrow(
+      'notification write failed',
+    );
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 });

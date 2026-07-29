@@ -328,6 +328,7 @@ function SearchPageContent() {
   const [authOpen, setAuthOpen] = useState(false);
   const [toast, setToast] = useState('');
   const pendingActionRef = useRef<(() => Promise<void>) | null>(null);
+  const pendingDestinationRef = useRef<string | null>(null);
   const tabRefs = useRef<Partial<Record<SearchType, HTMLButtonElement | null>>>(
     {},
   );
@@ -382,8 +383,12 @@ function SearchPageContent() {
     tabRefs.current[next.id]?.focus();
   };
 
-  const requestAuthentication = (resume?: () => Promise<void>) => {
+  const requestAuthentication = (
+    resume?: () => Promise<void>,
+    destination?: string,
+  ) => {
     pendingActionRef.current = resume ?? null;
+    pendingDestinationRef.current = destination ?? null;
     setAuthOpen(true);
   };
 
@@ -391,7 +396,7 @@ function SearchPageContent() {
     <div className="home-shell search-shell">
       <PageSidebar
         user={user}
-        onLogin={() => requestAuthentication()}
+        onLogin={(destination) => requestAuthentication(undefined, destination)}
         onToast={setToast}
       />
       <main className="content-shell search-content-shell">
@@ -475,10 +480,17 @@ function SearchPageContent() {
         onClose={() => {
           setAuthOpen(false);
           pendingActionRef.current = null;
+          pendingDestinationRef.current = null;
         }}
         onAuthenticated={(authenticatedUser) => {
           setUser(authenticatedUser);
           setAuthOpen(false);
+          const destination = pendingDestinationRef.current;
+          pendingDestinationRef.current = null;
+          if (destination) {
+            router.push(destination);
+            return;
+          }
           const resume = pendingActionRef.current;
           pendingActionRef.current = null;
           if (resume) void resume();

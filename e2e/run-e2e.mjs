@@ -42,7 +42,11 @@ const redisUrl = `redis://127.0.0.1:${redisPort}`;
 const frontendUrl = `http://127.0.0.1:${frontendPort}`;
 const apiUrl = `http://127.0.0.1:${backendPort}/api/v1`;
 const repositoryTestRoot = path.resolve(repoRoot, 'test');
-const taskTestRoot = path.resolve(repositoryTestRoot, 'spec004-e2e');
+const taskDirectoryName = process.env.E2E_TASK_DIRECTORY ?? 'browser-e2e-local';
+if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(taskDirectoryName)) {
+  throw new Error('E2E_TASK_DIRECTORY must be a safe relative directory name.');
+}
+const taskTestRoot = path.resolve(repositoryTestRoot, taskDirectoryName);
 const mediaRoot = path.resolve(taskTestRoot, 'media');
 
 const composeEnvironment = {
@@ -277,6 +281,42 @@ async function seedUsersAndSessions() {
       '搜索作者',
       '0000000110',
     ],
+    [
+      '00000000-0000-4000-8000-000000000111',
+      'notification-author@example.com',
+      '通知作者',
+      '0000000111',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000112',
+      'notification-viewer@example.com',
+      '通知蓝友',
+      '0000000112',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000113',
+      'notification-firefox-author@example.com',
+      '火狐通知作者',
+      '0000000113',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000114',
+      'notification-firefox-viewer@example.com',
+      '火狐通知蓝友',
+      '0000000114',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000115',
+      'notification-webkit-author@example.com',
+      '织网通知作者',
+      '0000000115',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000116',
+      'notification-webkit-viewer@example.com',
+      '织网通知蓝友',
+      '0000000116',
+    ],
   ];
   const values = users
     .map(
@@ -317,6 +357,12 @@ async function seedUsersAndSessions() {
   const socialThirdUserId = users[7][0];
   const searchViewerUserId = users[8][0];
   const searchAuthorUserId = users[9][0];
+  const notificationAuthorUserId = users[10][0];
+  const notificationViewerUserId = users[11][0];
+  const notificationFirefoxAuthorUserId = users[12][0];
+  const notificationFirefoxViewerUserId = users[13][0];
+  const notificationWebkitAuthorUserId = users[14][0];
+  const notificationWebkitViewerUserId = users[15][0];
   const sessions = [
     ['spec002-device-a-session', multiDeviceUserId],
     ['spec002-device-b-session', multiDeviceUserId],
@@ -328,6 +374,12 @@ async function seedUsersAndSessions() {
     ['spec007-third-session', socialThirdUserId],
     ['spec008-viewer-session', searchViewerUserId],
     ['spec008-author-session', searchAuthorUserId],
+    ['spec009-author-session', notificationAuthorUserId],
+    ['spec009-viewer-session', notificationViewerUserId],
+    ['spec009-firefox-author-session', notificationFirefoxAuthorUserId],
+    ['spec009-firefox-viewer-session', notificationFirefoxViewerUserId],
+    ['spec009-webkit-author-session', notificationWebkitAuthorUserId],
+    ['spec009-webkit-viewer-session', notificationWebkitViewerUserId],
   ];
   for (const [sessionId, userId] of sessions) {
     const key =
@@ -422,6 +474,17 @@ async function verifyLegacyMigrations() {
     ),
     'utf8',
   );
+  const notificationSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260729000100_add_interaction_notifications',
+      'migration.sql',
+    ),
+    'utf8',
+  );
   const channelSeedStart = channelSql.indexOf('INSERT INTO "channels"');
   const channelSeedEnd = channelSql.indexOf(
     '-- Add the relation as nullable',
@@ -508,7 +571,37 @@ async function verifyLegacyMigrations() {
     channelSql,
   );
   await psql('-d', migrationDatabase, '-v', 'ON_ERROR_STOP=1', '-c', socialSql);
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    `INSERT INTO "note_favorites" ("userId", "noteId", "createdAt")
+     VALUES (
+       '00000000-0000-4000-8000-000000000099',
+       '00000000-0000-4000-8000-000000000098',
+       '2026-07-28T00:00:00.000Z'
+     );
+     INSERT INTO "note_comments"
+       ("id", "noteId", "authorId", "content", "createdAt")
+     VALUES (
+       '00000000-0000-4000-8000-000000000096',
+       '00000000-0000-4000-8000-000000000098',
+       '00000000-0000-4000-8000-000000000099',
+       '迁移前评论',
+       '2026-07-28T00:00:00.000Z'
+     );`,
+  );
   await psql('-d', migrationDatabase, '-v', 'ON_ERROR_STOP=1', '-c', searchSql);
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    notificationSql,
+  );
   await psql(
     '-d',
     migrationDatabase,
@@ -565,10 +658,10 @@ async function verifyLegacyMigrations() {
         RAISE EXCEPTION 'SPEC-007 migration changed a legacy note';
       END IF;
       IF (SELECT count(*) FROM "note_likes") <> 0
-         OR (SELECT count(*) FROM "note_favorites") <> 0
-         OR (SELECT count(*) FROM "note_comments") <> 0
+         OR (SELECT count(*) FROM "note_favorites") <> 1
+         OR (SELECT count(*) FROM "note_comments") <> 1
          OR (SELECT count(*) FROM "user_follows") <> 0 THEN
-        RAISE EXCEPTION 'SPEC-007 migration created fake interactions';
+        RAISE EXCEPTION 'SPEC-009 migration changed historical interactions';
       END IF;
       IF NOT EXISTS (
         SELECT 1 FROM pg_constraint
@@ -606,6 +699,30 @@ async function verifyLegacyMigrations() {
           AND "content" = '迁移前正文'
       ) THEN
         RAISE EXCEPTION 'SPEC-008 migration changed legacy content';
+      END IF;
+      IF (SELECT count(*) FROM "notifications") <> 0 THEN
+        RAISE EXCEPTION 'SPEC-009 backfilled historical notifications';
+      END IF;
+      IF (
+        SELECT count(*) FROM pg_indexes
+        WHERE indexname IN (
+          'notifications_recipientId_createdAt_id_idx',
+          'notifications_recipientId_type_createdAt_id_idx',
+          'notifications_recipientId_readAt_idx'
+        )
+      ) <> 3 THEN
+        RAISE EXCEPTION 'SPEC-009 notification indexes missing';
+      END IF;
+      IF (
+        SELECT count(*) FROM pg_constraint
+        WHERE conname IN (
+          'notifications_recipientId_fkey',
+          'notifications_actorId_fkey',
+          'notifications_noteId_fkey',
+          'notifications_commentId_fkey'
+        )
+      ) <> 4 THEN
+        RAISE EXCEPTION 'SPEC-009 notification foreign keys missing';
       END IF;
     END $$;`,
   );

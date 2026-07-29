@@ -71,6 +71,16 @@ describe('backend application', () => {
     );
     expect(response.body.paths).toHaveProperty('/api/v1/users/{userId}/notes');
     expect(response.body.paths).toHaveProperty('/api/v1/media/{objectKey}');
+    expect(response.body.paths).toHaveProperty('/api/v1/notifications');
+    expect(response.body.paths).toHaveProperty(
+      '/api/v1/notifications/unread-count',
+    );
+    expect(response.body.paths).toHaveProperty(
+      '/api/v1/notifications/read-all',
+    );
+    expect(response.body.paths).toHaveProperty(
+      '/api/v1/notifications/{notificationId}/read',
+    );
     expect(
       response.body.paths['/api/v1/notes'].post.requestBody.content[
         'multipart/form-data'
@@ -214,6 +224,22 @@ describe('backend application', () => {
     );
     expect(schemas.PublicUserProfileDto.properties).not.toHaveProperty('email');
     expect(schemas.PublicUserProfileDto.properties).not.toHaveProperty('age');
+    expect(schemas.NotificationItemDto.properties).toEqual(
+      expect.objectContaining({
+        id: expect.any(Object),
+        type: expect.any(Object),
+        action: expect.any(Object),
+        createdAt: expect.any(Object),
+        readAt: expect.any(Object),
+        actor: expect.any(Object),
+        note: expect.any(Object),
+        comment: expect.any(Object),
+      }),
+    );
+    expect(schemas.NotificationActorDto.properties).not.toHaveProperty('email');
+    expect(schemas.NotificationActorDto.properties).not.toHaveProperty(
+      'createdAt',
+    );
   });
 
   it('creates the Swagger document with the tsx development runtime', () => {
