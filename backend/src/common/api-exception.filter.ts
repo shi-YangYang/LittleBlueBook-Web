@@ -5,7 +5,7 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 
 import type { ApiErrorBody } from './api-exception.js';
 
@@ -26,6 +26,7 @@ function isApiErrorBody(value: unknown): value is ApiErrorBody {
 export class ApiExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
+    const request = host.switchToHttp().getRequest<Request>();
 
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
@@ -37,10 +38,13 @@ export class ApiExceptionFilter implements ExceptionFilter {
       }
 
       if (status === HttpStatus.PAYLOAD_TOO_LARGE) {
+        const avatarUpload = request.path.endsWith('/profile/me/settings');
         response.status(status).json({
           statusCode: status,
-          code: 'IMAGE_TOO_LARGE',
-          message: '单张图片不能超过10 MiB',
+          code: avatarUpload ? 'AVATAR_TOO_LARGE' : 'IMAGE_TOO_LARGE',
+          message: avatarUpload
+            ? '头像不能超过5 MiB'
+            : '单张图片不能超过10 MiB',
         } satisfies ApiErrorBody);
         return;
       }

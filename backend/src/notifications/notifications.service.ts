@@ -7,6 +7,7 @@ import { ApiException } from '../common/api-exception.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { NotificationType } from '../generated/prisma/client.js';
 import { MEDIA_STORAGE, type MediaStorage } from '../media/media.types.js';
+import { publicAvatar } from '../profile/profile-avatar.js';
 import type {
   NotificationItem,
   NotificationPage,
@@ -91,6 +92,7 @@ export class NotificationsService {
             id: true,
             nickname: true,
             littleBlueBookId: true,
+            avatarObjectKey: true,
           },
         },
         note: {
@@ -210,6 +212,7 @@ export class NotificationsService {
       id: string;
       nickname: string;
       littleBlueBookId: string;
+      avatarObjectKey: string | null;
     } | null;
     note: {
       id: string;
@@ -234,10 +237,11 @@ export class NotificationsService {
         id: notification.actor?.id ?? null,
         nickname: actorNickname,
         littleBlueBookId: notification.actor?.littleBlueBookId ?? null,
-        avatar: {
-          type: 'initial',
-          value: Array.from(actorNickname.trim())[0] ?? '蓝',
-        },
+        avatar: publicAvatar(
+          actorNickname,
+          notification.actor?.avatarObjectKey ?? null,
+          this.media,
+        ),
       },
       note: notification.note
         ? {

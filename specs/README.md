@@ -15,6 +15,7 @@
 | SPEC-007 | 点赞、收藏、评论与关注 | Accepted | `spec-007-social-interactions/` |
 | SPEC-008 | 内容与用户搜索 | Accepted | `spec-008-content-search/` |
 | SPEC-009 | 互动通知中心 | Accepted | `spec-009-notification-center/` |
+| SPEC-010 | 个人资料设置 | Accepted | `spec-010-profile-settings/` |
 
 ## 状态说明
 

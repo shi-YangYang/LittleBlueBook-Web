@@ -12,6 +12,7 @@ import {
 } from 'react';
 
 import { Icon } from './_components/icon';
+import { Avatar, type ProfileAvatar } from './_components/avatar';
 import { NoteFeed } from './_components/note-feed';
 import { NotificationNavItem } from './_components/notification-nav-item';
 import { SearchTrigger } from './_components/search-dialog';
@@ -26,6 +27,7 @@ type User = {
   id: string;
   email: string;
   nickname: string;
+  avatar: ProfileAvatar;
 };
 
 type ApiErrorPayload = {
@@ -333,6 +335,8 @@ export default function Home() {
       destinationAfterAuthRef.current = '/publish';
     } else if (parameters.get('next') === '/notifications') {
       destinationAfterAuthRef.current = '/notifications';
+    } else if (parameters.get('next') === '/settings/profile') {
+      destinationAfterAuthRef.current = '/settings/profile';
     }
     window.setTimeout(() => setModalOpen(true), 0);
     parameters.delete('login');
@@ -574,9 +578,15 @@ export default function Home() {
           ) : user ? (
             <div className="identity-wrap">
               <Link className="identity-button" href="/profile" aria-label="我">
-                <span className="identity-avatar" aria-hidden="true">
-                  {Array.from(user.nickname)[0]}
-                </span>
+                <Avatar
+                  avatar={
+                    user.avatar ?? {
+                      type: 'initial',
+                      value: Array.from(user.nickname.trim())[0] ?? '蓝',
+                    }
+                  }
+                  className="identity-avatar"
+                />
                 <span className="identity-name">我</span>
               </Link>
             </div>

@@ -1,12 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-class AvatarDto {
-  @ApiProperty({ type: String, enum: ['initial'] })
-  type!: 'initial';
-
-  @ApiProperty({ type: String })
-  value!: string;
-}
+import { ProfileAvatarDto } from '../../profile/dto/profile-avatar.dto.js';
 
 class NoteAuthorDto {
   @ApiProperty({ type: String, format: 'uuid' })
@@ -15,8 +9,8 @@ class NoteAuthorDto {
   @ApiProperty({ type: String })
   nickname!: string;
 
-  @ApiProperty({ type: () => AvatarDto })
-  avatar!: AvatarDto;
+  @ApiProperty({ type: () => ProfileAvatarDto })
+  avatar!: ProfileAvatarDto;
 }
 
 class NoteCoverDto {
@@ -81,8 +75,8 @@ class SearchUserCardDto {
   })
   littleBlueBookId!: string;
 
-  @ApiProperty({ type: () => AvatarDto })
-  avatar!: AvatarDto;
+  @ApiProperty({ type: () => ProfileAvatarDto })
+  avatar!: ProfileAvatarDto;
 
   @ApiProperty({ type: Number, minimum: 0 })
   followers!: number;
@@ -157,8 +151,14 @@ export class PublicUserProfileDto {
   @ApiProperty({ type: String, enum: ['男', '女', '保密'] })
   gender!: '男' | '女' | '保密';
 
-  @ApiProperty({ type: () => AvatarDto })
-  avatar!: AvatarDto;
+  @ApiProperty({ type: Number, nullable: true, minimum: 0, maximum: 120 })
+  age!: number | null;
+
+  @ApiProperty({ type: String, nullable: true, maxLength: 100 })
+  bio!: string | null;
+
+  @ApiProperty({ type: () => ProfileAvatarDto })
+  avatar!: ProfileAvatarDto;
 
   @ApiProperty({ type: () => PublicProfileStatsDto })
   stats!: PublicProfileStatsDto;

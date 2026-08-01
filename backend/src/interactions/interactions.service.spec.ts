@@ -1,6 +1,7 @@
 import type { AuthService } from '../auth/auth.service.js';
 import { ApiException } from '../common/api-exception.js';
 import type { PrismaService } from '../database/prisma.service.js';
+import type { MediaStorage } from '../media/media.types.js';
 import { InteractionsService } from './interactions.service.js';
 
 const viewer = {
@@ -45,7 +46,7 @@ function dependencies() {
             authorId: string;
             content: string;
             createdAt: Date;
-            author: { nickname: string };
+            author: { nickname: string; avatarObjectKey: string | null };
           }>
         > => [],
       ),
@@ -60,7 +61,7 @@ function dependencies() {
         authorId: viewer.id,
         content: '评论正文',
         createdAt: new Date('2026-07-28T12:00:00.000Z'),
-        author: { nickname: viewer.nickname },
+        author: { nickname: viewer.nickname, avatarObjectKey: null },
       })),
       delete: jest.fn(async () => ({})),
       count: jest.fn(async () => 1),
@@ -79,6 +80,9 @@ function dependencies() {
     service: new InteractionsService(
       auth as unknown as AuthService,
       prisma as unknown as PrismaService,
+      {
+        publicUrl: jest.fn((key: string) => `/media/${key}`),
+      } as unknown as MediaStorage,
     ),
     auth,
     prisma,
@@ -217,7 +221,7 @@ describe('InteractionsService', () => {
         authorId: authorId,
         content: '<script>纯文本</script>',
         createdAt: new Date('2026-07-28T12:00:00.000Z'),
-        author: { nickname: '笔记作者' },
+        author: { nickname: '笔记作者', avatarObjectKey: null },
       },
     ]);
 

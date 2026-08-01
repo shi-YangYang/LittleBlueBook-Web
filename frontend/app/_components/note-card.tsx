@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { apiRequest, ApiRequestError } from '../_lib/api';
 import { markNoteDetailSource, type NoteCardData } from '../_lib/notes';
 import { Icon } from './icon';
+import { Avatar } from './avatar';
 
 type NoteCardProps = {
   note: NoteCardData;
@@ -90,9 +91,7 @@ export function NoteCard({
           href={`/explore/${note.id}`}
           onNavigate={() => markNoteDetailSource(note.id)}
         >
-          <span className="author-avatar" aria-hidden="true">
-            {note.author.avatar.value}
-          </span>
+          <Avatar avatar={note.author.avatar} className="author-avatar" />
           <span>{note.author.nickname}</span>
         </Link>
         <button

@@ -36,6 +36,7 @@ import {
 import { RegisterDto } from './dto/register.dto.js';
 import { RequestCodeDto } from './dto/request-code.dto.js';
 import { VerifyCodeDto } from './dto/verify-code.dto.js';
+import type { PublicUser } from './auth.types.js';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -75,7 +76,7 @@ export class AuthController {
     data:
       | {
           status: 'authenticated';
-          user: { id: string; email: string; nickname: string };
+          user: PublicUser;
         }
       | { status: 'registration_required' };
   }> {
@@ -110,7 +111,7 @@ export class AuthController {
   ): Promise<{
     data: {
       status: 'authenticated';
-      user: { id: string; email: string; nickname: string };
+      user: PublicUser;
     };
   }> {
     const result = await this.auth.register(
@@ -137,7 +138,7 @@ export class AuthController {
   ): Promise<{
     data: {
       authenticated: boolean;
-      user: { id: string; email: string; nickname: string } | null;
+      user: PublicUser | null;
       pendingRegistration: boolean;
       registrationExpired: boolean;
     };

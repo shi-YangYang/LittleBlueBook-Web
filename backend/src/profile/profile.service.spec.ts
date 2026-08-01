@@ -1,6 +1,8 @@
 import { ApiException } from '../common/api-exception.js';
 import type { AuthService } from '../auth/auth.service.js';
 import type { PrismaService } from '../database/prisma.service.js';
+import type { MediaStorage } from '../media/media.types.js';
+import type { AvatarProcessorService } from './avatar-processor.service.js';
 import { ProfileService } from './profile.service.js';
 
 describe('ProfileService', () => {
@@ -23,6 +25,10 @@ describe('ProfileService', () => {
           nickname: '蓝海',
           littleBlueBookId: '0123456789',
           gender,
+          birthDate: null,
+          showAge: false,
+          bio: null,
+          avatarObjectKey: null,
         })),
       },
       userFollow: { count: jest.fn(async () => 2) },
@@ -32,12 +38,18 @@ describe('ProfileService', () => {
     const service = new ProfileService(
       auth as unknown as AuthService,
       prisma as unknown as PrismaService,
+      {} as AvatarProcessorService,
+      {
+        publicUrl: jest.fn((key: string) => `/media/${key}`),
+      } as unknown as MediaStorage,
     );
 
     await expect(service.current('session-secret')).resolves.toEqual({
       nickname: '蓝海',
       littleBlueBookId: '0123456789',
       gender: label,
+      age: null,
+      bio: null,
       avatar: { type: 'initial', value: '蓝' },
       stats: {
         following: 2,
@@ -52,6 +64,10 @@ describe('ProfileService', () => {
         nickname: true,
         littleBlueBookId: true,
         gender: true,
+        birthDate: true,
+        showAge: true,
+        bio: true,
+        avatarObjectKey: true,
       },
     });
   });
@@ -62,6 +78,8 @@ describe('ProfileService', () => {
     const service = new ProfileService(
       auth as unknown as AuthService,
       prisma as unknown as PrismaService,
+      {} as AvatarProcessorService,
+      {} as MediaStorage,
     );
 
     await expect(service.current(undefined)).rejects.toBeInstanceOf(

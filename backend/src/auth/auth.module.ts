@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 
 import type { AppEnvironment } from '../config/environment.js';
 import { DatabaseModule } from '../database/database.module.js';
+import { MediaModule } from '../media/media.module.js';
 import { RedisModule } from '../redis/redis.module.js';
 import { AuthController } from './auth.controller.js';
 import { MAIL_SENDER } from './auth.constants.js';
@@ -16,7 +17,7 @@ import { SessionService } from './session.service.js';
 import { VerificationCodeService } from './verification-code.service.js';
 
 @Module({
-  imports: [DatabaseModule, RedisModule],
+  imports: [DatabaseModule, RedisModule, MediaModule],
   controllers: [AuthController],
   providers: [
     AuthService,

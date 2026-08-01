@@ -1,3 +1,5 @@
+import type { ProfileAvatar } from '../_components/avatar';
+
 export type NotificationTab = 'all' | 'comments' | 'reactions' | 'follows';
 
 export type NotificationItemData = {
@@ -10,10 +12,7 @@ export type NotificationItemData = {
     id: string | null;
     nickname: string;
     littleBlueBookId: string | null;
-    avatar: {
-      type: 'initial';
-      value: string;
-    };
+    avatar: ProfileAvatar;
   };
   note: {
     id: string;

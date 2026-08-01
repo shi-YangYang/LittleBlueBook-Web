@@ -6,6 +6,8 @@ import { AuthService } from '../auth/auth.service.js';
 import { ApiException } from '../common/api-exception.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { MEDIA_STORAGE, type MediaStorage } from '../media/media.types.js';
+import { publicAvatar } from '../profile/profile-avatar.js';
 import type {
   CommentDeletionResult,
   CommentMutationResult,
@@ -29,6 +31,7 @@ export class InteractionsService {
   constructor(
     @Inject(AuthService) private readonly auth: AuthService,
     @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(MEDIA_STORAGE) private readonly media: MediaStorage,
   ) {}
 
   async setLike(
@@ -197,7 +200,7 @@ export class InteractionsService {
           authorId: true,
           content: true,
           createdAt: true,
-          author: { select: { nickname: true } },
+          author: { select: { nickname: true, avatarObjectKey: true } },
         },
       }),
       this.prisma.noteComment.count({ where: { noteId } }),
@@ -247,7 +250,7 @@ export class InteractionsService {
           authorId: true,
           content: true,
           createdAt: true,
-          author: { select: { nickname: true } },
+          author: { select: { nickname: true, avatarObjectKey: true } },
         },
       });
       if (note.authorId !== user.id) {
@@ -345,7 +348,7 @@ export class InteractionsService {
       authorId: string;
       content: string;
       createdAt: Date;
-      author: { nickname: string };
+      author: { nickname: string; avatarObjectKey: string | null };
     },
     noteAuthorId: string,
     viewerId: string | undefined,
@@ -357,10 +360,11 @@ export class InteractionsService {
       author: {
         id: comment.authorId,
         nickname: comment.author.nickname,
-        avatar: {
-          type: 'initial',
-          value: Array.from(comment.author.nickname.trim())[0] ?? '蓝',
-        },
+        avatar: publicAvatar(
+          comment.author.nickname,
+          comment.author.avatarObjectKey,
+          this.media,
+        ),
       },
       isAuthor: comment.authorId === noteAuthorId,
       canDelete: viewerId === comment.authorId || viewerId === noteAuthorId,

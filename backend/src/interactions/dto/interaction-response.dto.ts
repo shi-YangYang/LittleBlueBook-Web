@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+import { ProfileAvatarDto } from '../../profile/dto/profile-avatar.dto.js';
+
 export class InteractionApiErrorDto {
   @ApiProperty({ type: Number, example: 401, minimum: 400, maximum: 599 })
   statusCode!: number;
@@ -48,14 +50,6 @@ export class FollowResponseDto {
   data!: FollowResultDto;
 }
 
-export class CommentAvatarDto {
-  @ApiProperty({ type: String, enum: ['initial'], example: 'initial' })
-  type!: 'initial';
-
-  @ApiProperty({ type: String, example: '蓝' })
-  value!: string;
-}
-
 export class CommentAuthorDto {
   @ApiProperty({ type: String, format: 'uuid' })
   id!: string;
@@ -63,8 +57,8 @@ export class CommentAuthorDto {
   @ApiProperty({ type: String, example: '蓝书用户' })
   nickname!: string;
 
-  @ApiProperty({ type: () => CommentAvatarDto })
-  avatar!: CommentAvatarDto;
+  @ApiProperty({ type: () => ProfileAvatarDto })
+  avatar!: ProfileAvatarDto;
 }
 
 export class NoteCommentDto {

@@ -14,6 +14,7 @@ import { AuthDialog, type AuthenticatedUser } from '../_components/auth-dialog';
 import { Icon } from '../_components/icon';
 import { notificationTabFromUrl } from '../_components/notification-nav-item';
 import { PageSidebar, PageTopbar } from '../_components/page-chrome';
+import { Avatar } from '../_components/avatar';
 import { apiRequest, ApiRequestError } from '../_lib/api';
 import {
   publishUnreadCount,
@@ -463,12 +464,10 @@ function NotificationsPageContent() {
                           disabled={busyIds.has(notification.id)}
                           onClick={() => void openNotification(notification)}
                         >
-                          <span
+                          <Avatar
+                            avatar={notification.actor.avatar}
                             className="notification-avatar"
-                            aria-hidden="true"
-                          >
-                            {notification.actor.avatar.value}
-                          </span>
+                          />
                           <span className="notification-copy">
                             <span className="notification-main">
                               <strong>{notification.actor.nickname}</strong>

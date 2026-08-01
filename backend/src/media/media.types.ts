@@ -22,7 +22,10 @@ export const MEDIA_STORAGE = Symbol('MEDIA_STORAGE');
 
 export interface MediaStorage {
   save(images: ValidatedImage[]): Promise<StoredImage[]>;
+  createObjectKey(extension: ValidatedImage['extension']): string;
+  saveAt(objectKey: string, image: ValidatedImage): Promise<StoredImage>;
   deleteMany(objectKeys: string[]): Promise<void>;
+  deleteStrict(objectKey: string): Promise<void>;
   read(objectKey: string): Promise<Buffer | null>;
   publicUrl(objectKey: string): string;
 }

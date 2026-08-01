@@ -1,14 +1,12 @@
 import type { NotePage } from '../notes/notes.types.js';
 import type { ProfileGender } from '../profile/profile.types.js';
+import type { ProfileAvatar } from '../profile/profile-avatar.js';
 
 export type SearchUserCard = {
   id: string;
   nickname: string;
   littleBlueBookId: string;
-  avatar: {
-    type: 'initial';
-    value: string;
-  };
+  avatar: ProfileAvatar;
   followers: number;
   notes: number;
   viewer: {
@@ -29,10 +27,9 @@ export type PublicUserProfile = {
   nickname: string;
   littleBlueBookId: string;
   gender: ProfileGender;
-  avatar: {
-    type: 'initial';
-    value: string;
-  };
+  age: number | null;
+  bio: string | null;
+  avatar: ProfileAvatar;
   stats: {
     following: number;
     followers: number;

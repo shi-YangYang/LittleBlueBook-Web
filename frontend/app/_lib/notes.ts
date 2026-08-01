@@ -1,3 +1,5 @@
+import type { ProfileAvatar } from '../_components/avatar';
+
 export type NoteCardData = {
   id: string;
   title: string;
@@ -9,10 +11,7 @@ export type NoteCardData = {
   author: {
     id: string;
     nickname: string;
-    avatar: {
-      type: 'initial';
-      value: string;
-    };
+    avatar: ProfileAvatar;
   };
   likes: number;
   liked: boolean;
@@ -63,10 +62,7 @@ export type NoteCommentData = {
   author: {
     id: string;
     nickname: string;
-    avatar: {
-      type: 'initial';
-      value: string;
-    };
+    avatar: ProfileAvatar;
   };
   isAuthor: boolean;
   canDelete: boolean;

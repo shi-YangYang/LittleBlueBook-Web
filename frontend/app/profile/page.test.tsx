@@ -127,8 +127,8 @@ describe('ProfilePage', () => {
 
     const settings = screen.getByRole('button', { name: '个人主页设置' });
     fireEvent.click(settings);
-    const logout = screen.getByRole('menuitem', { name: '退出登录' });
-    await waitFor(() => expect(logout).toHaveFocus());
+    const editProfile = screen.getByRole('menuitem', { name: '编辑资料' });
+    await waitFor(() => expect(editProfile).toHaveFocus());
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(

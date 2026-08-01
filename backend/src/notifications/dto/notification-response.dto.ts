@@ -1,12 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-class NotificationAvatarDto {
-  @ApiProperty({ type: String, enum: ['initial'], example: 'initial' })
-  type!: 'initial';
-
-  @ApiProperty({ type: String, example: '蓝' })
-  value!: string;
-}
+import { ProfileAvatarDto } from '../../profile/dto/profile-avatar.dto.js';
 
 class NotificationActorDto {
   @ApiProperty({ type: String, format: 'uuid', nullable: true })
@@ -22,8 +16,8 @@ class NotificationActorDto {
   })
   littleBlueBookId!: string | null;
 
-  @ApiProperty({ type: () => NotificationAvatarDto })
-  avatar!: NotificationAvatarDto;
+  @ApiProperty({ type: () => ProfileAvatarDto })
+  avatar!: ProfileAvatarDto;
 }
 
 class NotificationThumbnailDto {

@@ -496,12 +496,15 @@ test('logs out from the profile settings menu', async ({
 
   const settings = page.getByRole('button', { name: '个人主页设置' });
   await settings.click();
+  await expect(page.getByRole('menuitem', { name: '编辑资料' })).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(page.getByRole('menuitem', { name: '退出登录' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(settings).toBeFocused();
 
   await settings.click();
-  await page.getByRole('menuitem', { name: '退出登录' }).click();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
   await expect(page).toHaveURL(`${frontendUrl}/`);
   await expect(
     page.getByRole('button', { name: '登录', exact: true }),

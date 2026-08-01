@@ -17,6 +17,7 @@ import {
   AuthDialog,
   type AuthenticatedUser,
 } from '../../_components/auth-dialog';
+import { Avatar } from '../../_components/avatar';
 import { Icon } from '../../_components/icon';
 import { apiRequest, ApiRequestError } from '../../_lib/api';
 import { lockDocumentScroll } from '../../_lib/document-scroll-lock';
@@ -616,9 +617,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
         <section className="detail-content">
           <div className="detail-scroll">
             <header className="detail-author">
-              <span className="detail-avatar" aria-hidden="true">
-                {note.author.avatar.value}
-              </span>
+              <Avatar avatar={note.author.avatar} className="detail-avatar" />
               <strong>{note.author.nickname}</strong>
               {note.viewer.canFollow ? (
                 <button
@@ -688,9 +687,10 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
                 <ul className="comment-list">
                   {comments.map((comment) => (
                     <li key={comment.id}>
-                      <span className="comment-avatar" aria-hidden="true">
-                        {comment.author.avatar.value}
-                      </span>
+                      <Avatar
+                        avatar={comment.author.avatar}
+                        className="comment-avatar"
+                      />
                       <div className="comment-body">
                         <div className="comment-heading">
                           <strong>{comment.author.nickname}</strong>

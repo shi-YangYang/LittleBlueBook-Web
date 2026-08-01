@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module.js';
 import { DatabaseModule } from '../database/database.module.js';
+import { MediaModule } from '../media/media.module.js';
 import {
   NoteInteractionsController,
   UserInteractionsController,
@@ -9,7 +10,7 @@ import {
 import { InteractionsService } from './interactions.service.js';
 
 @Module({
-  imports: [AuthModule, DatabaseModule],
+  imports: [AuthModule, DatabaseModule, MediaModule],
   controllers: [NoteInteractionsController, UserInteractionsController],
   providers: [InteractionsService],
 })

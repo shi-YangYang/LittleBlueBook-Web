@@ -12,6 +12,7 @@ import {
 } from 'react';
 
 import { AuthDialog } from '../_components/auth-dialog';
+import { Avatar, type ProfileAvatar } from '../_components/avatar';
 import { Icon } from '../_components/icon';
 import { NoteFeed } from '../_components/note-feed';
 import { NotificationNavItem } from '../_components/notification-nav-item';
@@ -39,10 +40,9 @@ type Profile = {
   nickname: string;
   littleBlueBookId: string;
   gender: '男' | '女' | '保密';
-  avatar: {
-    type: 'initial';
-    value: string;
-  };
+  age: number | null;
+  bio: string | null;
+  avatar: ProfileAvatar;
   stats: {
     following: number;
     followers: number;
@@ -116,6 +116,7 @@ export default function ProfilePage() {
   const [reloadVersion, setReloadVersion] = useState(0);
   const [authOpen, setAuthOpen] = useState(false);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const editProfileLinkRef = useRef<HTMLAnchorElement>(null);
   const logoutButtonRef = useRef<HTMLButtonElement>(null);
   const tabRefs = useRef<Partial<Record<TabId, HTMLButtonElement | null>>>({});
   const pendingInteractionRef = useRef<(() => Promise<void>) | null>(null);
@@ -201,7 +202,7 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!settingsOpen) return;
 
-    window.setTimeout(() => logoutButtonRef.current?.focus(), 0);
+    window.setTimeout(() => editProfileLinkRef.current?.focus(), 0);
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
@@ -309,9 +310,10 @@ export default function ProfilePage() {
               aria-current="page"
               aria-label="我"
             >
-              <span className="identity-avatar" aria-hidden="true">
-                {profile?.avatar.value ?? '我'}
-              </span>
+              <Avatar
+                avatar={profile?.avatar ?? { type: 'initial', value: '我' }}
+                className="identity-avatar"
+              />
               <span className="identity-name">我</span>
             </Link>
           </div>
@@ -374,13 +376,11 @@ export default function ProfilePage() {
           ) : profile ? (
             <>
               <section className="profile-header">
-                <div
+                <Avatar
+                  avatar={profile.avatar}
                   className="profile-avatar"
-                  role="img"
-                  aria-label={`${profile.nickname}的默认头像`}
-                >
-                  {profile.avatar.value}
-                </div>
+                  label={`${profile.nickname}的${profile.avatar.type === 'initial' ? '默认' : ''}头像`}
+                />
 
                 <div className="profile-details">
                   <div className="profile-title-row">
@@ -406,6 +406,13 @@ export default function ProfilePage() {
                       </button>
                       {settingsOpen ? (
                         <div className="profile-settings-menu" role="menu">
+                          <Link
+                            ref={editProfileLinkRef}
+                            href="/settings/profile"
+                            role="menuitem"
+                          >
+                            编辑资料
+                          </Link>
                           <button
                             ref={logoutButtonRef}
                             type="button"
@@ -421,6 +428,12 @@ export default function ProfilePage() {
                   </div>
 
                   <p className="profile-gender">性别：{profile.gender}</p>
+                  {profile.age == null ? null : (
+                    <p className="profile-age">年龄：{profile.age}</p>
+                  )}
+                  {profile.bio ? (
+                    <p className="profile-bio">{profile.bio}</p>
+                  ) : null}
 
                   <dl className="profile-stats" aria-label="个人统计">
                     <div>

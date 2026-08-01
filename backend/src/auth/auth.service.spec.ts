@@ -1,5 +1,6 @@
 import type { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import type { MediaStorage } from '../media/media.types.js';
 import { AuthService } from './auth.service.js';
 import type { LittleBlueBookIdService } from './little-blue-book-id.service.js';
 import type { RegistrationCredentialService } from './registration-credential.service.js';
@@ -52,6 +53,9 @@ describe('AuthService profile initialization', () => {
       registrationCredentials as unknown as RegistrationCredentialService,
       sessions as unknown as SessionService,
       littleBlueBookIds as unknown as LittleBlueBookIdService,
+      {
+        publicUrl: jest.fn((key: string) => `/media/${key}`),
+      } as unknown as MediaStorage,
     );
 
     await expect(
@@ -62,6 +66,7 @@ describe('AuthService profile initialization', () => {
         id: createdUser.id,
         email: createdUser.email,
         nickname: createdUser.nickname,
+        avatar: { type: 'initial', value: '蓝' },
       },
       sessionId: 'new-session',
     });

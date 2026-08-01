@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 import type { AuthenticatedUser } from './auth-dialog';
+import { Avatar } from './avatar';
 import { Icon } from './icon';
 import { NotificationNavItem } from './notification-nav-item';
 import { SearchTrigger } from './search-dialog';
@@ -95,9 +96,15 @@ export function PageSidebar({
               aria-label="我"
               aria-current={active === 'profile' ? 'page' : undefined}
             >
-              <span className="identity-avatar" aria-hidden="true">
-                {Array.from(user.nickname)[0] ?? '蓝'}
-              </span>
+              <Avatar
+                avatar={
+                  user.avatar ?? {
+                    type: 'initial',
+                    value: Array.from(user.nickname.trim())[0] ?? '蓝',
+                  }
+                }
+                className="identity-avatar"
+              />
               <span className="identity-name">我</span>
             </Link>
           </div>
@@ -128,12 +135,17 @@ export function PageSidebar({
 type PageTopbarProps = {
   currentKeyword?: string;
   onToast: (message: string) => void;
+  onNavigate?: (path: string, origin: HTMLButtonElement | null) => void;
 };
 
-export function PageTopbar({ currentKeyword, onToast }: PageTopbarProps) {
+export function PageTopbar({
+  currentKeyword,
+  onToast,
+  onNavigate,
+}: PageTopbarProps) {
   return (
     <header className="topbar">
-      <SearchTrigger currentKeyword={currentKeyword} />
+      <SearchTrigger currentKeyword={currentKeyword} onNavigate={onNavigate} />
       <div className="top-actions">
         <button type="button" onClick={() => onToast('功能开发中')}>
           创作中心

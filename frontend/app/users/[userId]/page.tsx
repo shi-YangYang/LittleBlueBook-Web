@@ -7,6 +7,7 @@ import {
   AuthDialog,
   type AuthenticatedUser,
 } from '../../_components/auth-dialog';
+import { Avatar } from '../../_components/avatar';
 import { Icon } from '../../_components/icon';
 import { NoteFeed } from '../../_components/note-feed';
 import { PageSidebar, PageTopbar } from '../../_components/page-chrome';
@@ -191,13 +192,11 @@ export default function PublicUserPage() {
           ) : profile ? (
             <>
               <section className="profile-header public-profile-header">
-                <div
+                <Avatar
+                  avatar={profile.avatar}
                   className="profile-avatar"
-                  role="img"
-                  aria-label={`${profile.nickname}的默认头像`}
-                >
-                  {profile.avatar.value}
-                </div>
+                  label={`${profile.nickname}的${profile.avatar.type === 'initial' ? '默认' : ''}头像`}
+                />
                 <div className="profile-details">
                   <div className="profile-title-row">
                     <div>
@@ -219,6 +218,12 @@ export default function PublicUserPage() {
                     </button>
                   </div>
                   <p className="profile-gender">性别：{profile.gender}</p>
+                  {profile.age == null ? null : (
+                    <p className="profile-age">年龄：{profile.age}</p>
+                  )}
+                  {profile.bio ? (
+                    <p className="profile-bio">{profile.bio}</p>
+                  ) : null}
                   <dl className="profile-stats" aria-label="公开用户统计">
                     <div>
                       <dt>关注</dt>

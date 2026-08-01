@@ -1,10 +1,9 @@
+import type { ProfileAvatar } from '../profile/profile-avatar.js';
+
 export type NoteAuthor = {
   id: string;
   nickname: string;
-  avatar: {
-    type: 'initial';
-    value: string;
-  };
+  avatar: ProfileAvatar;
 };
 
 export type NoteCard = {

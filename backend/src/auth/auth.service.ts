@@ -3,6 +3,8 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { ApiException } from '../common/api-exception.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { MEDIA_STORAGE, type MediaStorage } from '../media/media.types.js';
+import { publicAvatar } from '../profile/profile-avatar.js';
 import { isValidNickname, normalizeEmail } from './email.js';
 import { LittleBlueBookIdService } from './little-blue-book-id.service.js';
 import { RegistrationCredentialService } from './registration-credential.service.js';
@@ -27,6 +29,7 @@ export class AuthService {
     @Inject(SessionService) private readonly sessions: SessionService,
     @Inject(LittleBlueBookIdService)
     private readonly littleBlueBookIds: LittleBlueBookIdService,
+    @Inject(MEDIA_STORAGE) private readonly media: MediaStorage,
   ) {}
 
   async requestCode(email: string, sourceIp: string): Promise<void> {
@@ -202,11 +205,17 @@ export class AuthService {
     id: string;
     email: string;
     nickname: string;
+    avatarObjectKey?: string | null;
   }): PublicUser {
     return {
       id: user.id,
       email: user.email,
       nickname: user.nickname,
+      avatar: publicAvatar(
+        user.nickname,
+        user.avatarObjectKey ?? null,
+        this.media,
+      ),
     };
   }
 }

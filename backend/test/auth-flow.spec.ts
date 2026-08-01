@@ -236,6 +236,7 @@ describe('passwordless authentication API', () => {
         statusCode: 400,
         code: 'VALIDATION_ERROR',
         message: '请先阅读并同意用户协议与隐私政策',
+        details: { fields: ['acceptedTerms'] },
       });
   });
 
@@ -319,6 +320,8 @@ describe('passwordless authentication API', () => {
           nickname: '蓝书用户',
           littleBlueBookId: createdUser?.littleBlueBookId,
           gender: '保密',
+          age: null,
+          bio: null,
           avatar: { type: 'initial', value: '蓝' },
           stats: {
             following: 0,
@@ -378,6 +381,7 @@ describe('passwordless authentication API', () => {
         id: existing.id,
         email: existing.email,
         nickname: existing.nickname,
+        avatar: { type: 'initial', value: '已' },
       },
     });
     expect(cookieHeaders(response.headers)).toContain('lbb_session=');

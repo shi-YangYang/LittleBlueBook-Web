@@ -70,7 +70,10 @@ function dependencies() {
         mimeType: 'image/png' as const,
       },
     ]),
+    createObjectKey: jest.fn(() => `${'a'.repeat(48)}.png`),
+    saveAt: jest.fn(),
     deleteMany: jest.fn(async () => undefined),
+    deleteStrict: jest.fn(async () => undefined),
     read: jest.fn(),
     publicUrl: jest.fn((key: string) => `https://media.example.test/${key}`),
   };

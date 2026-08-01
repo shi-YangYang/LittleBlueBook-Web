@@ -15,6 +15,7 @@ import { AuthDialog, type AuthenticatedUser } from '../_components/auth-dialog';
 import { Icon } from '../_components/icon';
 import { NoteFeed } from '../_components/note-feed';
 import { PageSidebar, PageTopbar } from '../_components/page-chrome';
+import { Avatar } from '../_components/avatar';
 import { apiRequest, ApiRequestError } from '../_lib/api';
 import {
   normalizeSearchInput,
@@ -266,9 +267,7 @@ function UserResults({
         return (
           <article className="search-user-card" key={user.id}>
             <Link href={destination} aria-label={`查看${user.nickname}的主页`}>
-              <span className="search-user-avatar" aria-hidden="true">
-                {user.avatar.value}
-              </span>
+              <Avatar avatar={user.avatar} className="search-user-avatar" />
               <span className="search-user-copy">
                 <strong>{user.nickname}</strong>
                 <span>小蓝书号：{user.littleBlueBookId}</span>

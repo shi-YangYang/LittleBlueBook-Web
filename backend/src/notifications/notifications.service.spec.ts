@@ -22,6 +22,7 @@ type StoredNotification = {
     id: string;
     nickname: string;
     littleBlueBookId: string;
+    avatarObjectKey: string | null;
   } | null;
   note: {
     id: string;
@@ -89,6 +90,7 @@ describe('NotificationsService', () => {
           id: actorId,
           nickname: '<b>评论者</b>',
           littleBlueBookId: '1234567890',
+          avatarObjectKey: null,
         },
         note: {
           id: noteId,

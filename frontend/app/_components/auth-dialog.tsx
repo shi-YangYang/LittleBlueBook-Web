@@ -14,11 +14,13 @@ import {
 import { apiRequest, ApiRequestError } from '../_lib/api';
 import { lockDocumentScroll } from '../_lib/document-scroll-lock';
 import { Icon } from './icon';
+import type { ProfileAvatar } from './avatar';
 
 export type AuthenticatedUser = {
   id: string;
   email: string;
   nickname: string;
+  avatar: ProfileAvatar;
 };
 
 type SessionResult = {

@@ -317,6 +317,24 @@ async function seedUsersAndSessions() {
       '织网通知蓝友',
       '0000000116',
     ],
+    [
+      '00000000-0000-4000-8000-000000000117',
+      'profile-settings-chromium@example.com',
+      '资料蓝友',
+      '0000000117',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000118',
+      'profile-settings-firefox@example.com',
+      '火狐资料蓝友',
+      '0000000118',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000119',
+      'profile-settings-webkit@example.com',
+      '织网资料蓝友',
+      '0000000119',
+    ],
   ];
   const values = users
     .map(
@@ -363,6 +381,9 @@ async function seedUsersAndSessions() {
   const notificationFirefoxViewerUserId = users[13][0];
   const notificationWebkitAuthorUserId = users[14][0];
   const notificationWebkitViewerUserId = users[15][0];
+  const profileSettingsChromiumUserId = users[16][0];
+  const profileSettingsFirefoxUserId = users[17][0];
+  const profileSettingsWebkitUserId = users[18][0];
   const sessions = [
     ['spec002-device-a-session', multiDeviceUserId],
     ['spec002-device-b-session', multiDeviceUserId],
@@ -380,6 +401,9 @@ async function seedUsersAndSessions() {
     ['spec009-firefox-viewer-session', notificationFirefoxViewerUserId],
     ['spec009-webkit-author-session', notificationWebkitAuthorUserId],
     ['spec009-webkit-viewer-session', notificationWebkitViewerUserId],
+    ['spec010-chromium-session', profileSettingsChromiumUserId],
+    ['spec010-firefox-session', profileSettingsFirefoxUserId],
+    ['spec010-webkit-session', profileSettingsWebkitUserId],
   ];
   for (const [sessionId, userId] of sessions) {
     const key =
@@ -481,6 +505,17 @@ async function verifyLegacyMigrations() {
       'prisma',
       'migrations',
       '20260729000100_add_interaction_notifications',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const profileSettingsSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260729000200_add_profile_settings',
       'migration.sql',
     ),
     'utf8',
@@ -608,6 +643,14 @@ async function verifyLegacyMigrations() {
     '-v',
     'ON_ERROR_STOP=1',
     '-c',
+    profileSettingsSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
     channelSeedSql,
   );
   await psql(
@@ -723,6 +766,23 @@ async function verifyLegacyMigrations() {
         )
       ) <> 4 THEN
         RAISE EXCEPTION 'SPEC-009 notification foreign keys missing';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM "users"
+        WHERE "email" = 'legacy@example.com'
+          AND "birthDate" IS NULL
+          AND NOT "showAge"
+          AND "bio" IS NULL
+          AND "avatarObjectKey" IS NULL
+          AND "profileVersion" IS NOT NULL
+      ) THEN
+        RAISE EXCEPTION 'SPEC-010 legacy profile defaults failed';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE indexname = 'avatar_cleanup_nextAttemptAt_idx'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-010 cleanup retry index missing';
       END IF;
     END $$;`,
   );
@@ -889,6 +949,7 @@ async function main() {
         ...applicationEnvironment,
         E2E_FRONTEND_URL: frontendUrl,
         E2E_API_URL: apiUrl,
+        E2E_MEDIA_ROOT: mediaRoot,
         PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH ?? '0',
         ...(chromiumPath
           ? { PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: chromiumPath }

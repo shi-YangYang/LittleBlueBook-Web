@@ -34,23 +34,36 @@ export class LocalMediaStorageService implements MediaStorage {
 
     try {
       for (const image of images) {
-        const objectKey = `${randomBytes(24).toString('hex')}.${image.extension}`;
-        await writeFile(this.resolveObjectPath(objectKey), image.buffer, {
-          flag: 'wx',
-        });
-        saved.push({
-          objectKey,
-          byteSize: image.byteSize,
-          width: image.width,
-          height: image.height,
-          mimeType: image.mimeType,
-        });
+        const objectKey = this.createObjectKey(image.extension);
+        saved.push(await this.saveAt(objectKey, image));
       }
       return saved;
     } catch (error) {
       await this.deleteMany(saved.map((image) => image.objectKey));
       throw error;
     }
+  }
+
+  createObjectKey(extension: ValidatedImage['extension']): string {
+    return `${randomBytes(24).toString('hex')}.${extension}`;
+  }
+
+  async saveAt(objectKey: string, image: ValidatedImage): Promise<StoredImage> {
+    this.assertValidObjectKey(objectKey);
+    if (!objectKey.endsWith(`.${image.extension}`)) {
+      throw new Error('Media object key extension mismatch');
+    }
+    await mkdir(this.root, { recursive: true });
+    await writeFile(this.resolveObjectPath(objectKey), image.buffer, {
+      flag: 'wx',
+    });
+    return {
+      objectKey,
+      byteSize: image.byteSize,
+      width: image.width,
+      height: image.height,
+      mimeType: image.mimeType,
+    };
   }
 
   async deleteMany(objectKeys: string[]): Promise<void> {
@@ -63,6 +76,10 @@ export class LocalMediaStorageService implements MediaStorage {
         }
       }),
     );
+  }
+
+  async deleteStrict(objectKey: string): Promise<void> {
+    await rm(this.resolveObjectPath(objectKey), { force: true });
   }
 
   async read(objectKey: string): Promise<Buffer | null> {

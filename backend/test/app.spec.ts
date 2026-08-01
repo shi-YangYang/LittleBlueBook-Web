@@ -55,6 +55,7 @@ describe('backend application', () => {
       '/api/v1/auth/registration/complete',
     );
     expect(response.body.paths).toHaveProperty('/api/v1/profile/me');
+    expect(response.body.paths).toHaveProperty('/api/v1/profile/me/settings');
     expect(response.body.paths).toHaveProperty('/api/v1/channels');
     expect(response.body.paths).toHaveProperty('/api/v1/notes');
     expect(response.body.paths).toHaveProperty('/api/v1/notes/recommendations');
@@ -97,11 +98,8 @@ describe('backend application', () => {
         displayOrder: expect.any(Object),
       }),
     );
-    expect(
-      response.body.paths['/api/v1/notes/{noteId}'].get.responses['200']
-        .content['application/json'].schema.properties.data.properties.channel
-        .properties,
-    ).toEqual(
+    const schemas = response.body.components.schemas;
+    expect(schemas.NoteChannelResponseDto.properties).toEqual(
       expect.objectContaining({
         code: expect.any(Object),
         name: expect.any(Object),
@@ -109,7 +107,6 @@ describe('backend application', () => {
       }),
     );
 
-    const schemas = response.body.components.schemas;
     const successResponses = [
       ['/api/v1/notes/{noteId}/like', 'put', '200'],
       ['/api/v1/notes/{noteId}/like', 'delete', '200'],
@@ -217,13 +214,20 @@ describe('backend application', () => {
         nickname: expect.any(Object),
         littleBlueBookId: expect.any(Object),
         gender: expect.any(Object),
+        age: expect.any(Object),
+        bio: expect.any(Object),
         avatar: expect.any(Object),
         stats: expect.any(Object),
         viewer: expect.any(Object),
       }),
     );
     expect(schemas.PublicUserProfileDto.properties).not.toHaveProperty('email');
-    expect(schemas.PublicUserProfileDto.properties).not.toHaveProperty('age');
+    expect(schemas.PublicUserProfileDto.properties).not.toHaveProperty(
+      'birthDate',
+    );
+    expect(schemas.PublicUserProfileDto.properties).not.toHaveProperty(
+      'avatarObjectKey',
+    );
     expect(schemas.NotificationItemDto.properties).toEqual(
       expect.objectContaining({
         id: expect.any(Object),
@@ -239,6 +243,45 @@ describe('backend application', () => {
     expect(schemas.NotificationActorDto.properties).not.toHaveProperty('email');
     expect(schemas.NotificationActorDto.properties).not.toHaveProperty(
       'createdAt',
+    );
+    expect(schemas.ProfileAvatarDto.properties.type.enum).toEqual([
+      'initial',
+      'image',
+    ]);
+    for (const schemaName of [
+      'CurrentProfileDto',
+      'PublicProfileDto',
+      'NoteAuthorResponseDto',
+      'CommentAuthorDto',
+      'NotificationActorDto',
+      'NoteAuthorDto',
+      'SearchUserCardDto',
+      'PublicUserProfileDto',
+    ]) {
+      expect(schemas[schemaName].properties.avatar.$ref).toBe(
+        '#/components/schemas/ProfileAvatarDto',
+      );
+    }
+    expect(schemas.CurrentProfileDto.properties).toEqual(
+      expect.objectContaining({
+        nickname: expect.any(Object),
+        littleBlueBookId: expect.any(Object),
+        gender: expect.any(Object),
+        age: expect.any(Object),
+        bio: expect.any(Object),
+        avatar: expect.any(Object),
+        stats: expect.any(Object),
+      }),
+    );
+    for (const schemaName of ['CurrentProfileDto', 'PublicProfileDto']) {
+      expect(schemas[schemaName].properties).not.toHaveProperty('email');
+      expect(schemas[schemaName].properties).not.toHaveProperty('birthDate');
+      expect(schemas[schemaName].properties).not.toHaveProperty(
+        'avatarObjectKey',
+      );
+    }
+    expect(schemas.PrivateProfileSettingsDto.properties).not.toHaveProperty(
+      'avatarObjectKey',
     );
   });
 
@@ -282,6 +325,136 @@ describe('backend application', () => {
       stderr: '',
     });
   }, 35_000);
+
+  it('documents and returns the real profile multipart validation contract', async () => {
+    const invalidValue = 'must-not-leak-C:\\private\\avatar.png';
+    const singleFieldResponse = await request(app.getHttpServer())
+      .patch('/api/v1/profile/me/settings')
+      .field('nickname', '资料蓝友')
+      .field('gender', invalidValue)
+      .field('birthDate', '')
+      .field('showAge', 'false')
+      .field('bio', '')
+      .field('avatarAction', 'keep')
+      .field('profileVersion', '00000000-0000-4000-8000-000000000202')
+      .expect(400);
+
+    expect(singleFieldResponse.body).toEqual({
+      statusCode: 400,
+      code: 'VALIDATION_ERROR',
+      message: '请求参数无效',
+      details: { fields: ['gender'] },
+    });
+    expect(JSON.stringify(singleFieldResponse.body)).not.toContain(
+      invalidValue,
+    );
+    expect(JSON.stringify(singleFieldResponse.body)).not.toMatch(
+      /(?:private|stack|prisma|multer|filesystem)/i,
+    );
+
+    const multipleFieldResponse = await request(app.getHttpServer())
+      .patch('/api/v1/profile/me/settings')
+      .field('nickname', '资料蓝友')
+      .field('gender', invalidValue)
+      .field('birthDate', '')
+      .field('showAge', invalidValue)
+      .field('bio', '')
+      .field('avatarAction', 'keep')
+      .field('profileVersion', '00000000-0000-4000-8000-000000000202')
+      .expect(400);
+    expect(multipleFieldResponse.body).toEqual({
+      statusCode: 400,
+      code: 'VALIDATION_ERROR',
+      message: '请求参数无效',
+      details: { fields: ['gender', 'showAge'] },
+    });
+    expect(JSON.stringify(multipleFieldResponse.body)).not.toContain(
+      invalidValue,
+    );
+
+    const multipartResponseRequest = request(app.getHttpServer()).patch(
+      '/api/v1/profile/me/settings',
+    );
+    for (let index = 0; index < 11; index += 1) {
+      multipartResponseRequest.field(`field${index}`, invalidValue);
+    }
+    const multipartResponse = await multipartResponseRequest.expect(400);
+    expect(multipartResponse.body).toEqual({
+      statusCode: 400,
+      code: 'MULTIPART_INVALID',
+      message: '图片数量或上传数据不符合要求',
+    });
+    expect(JSON.stringify(multipartResponse.body)).not.toContain(invalidValue);
+    expect(multipartResponse.body).not.toHaveProperty('details');
+
+    const document = await request(app.getHttpServer())
+      .get('/docs-json')
+      .expect(200);
+    const patch = document.body.paths['/api/v1/profile/me/settings'].patch;
+    const schemas = document.body.components.schemas;
+    const badRequestSchema =
+      patch.responses['400'].content['application/json'].schema;
+    expect(patch.responses['400'].description).toContain('VALIDATION_ERROR');
+    expect(badRequestSchema.oneOf).toEqual([
+      { $ref: '#/components/schemas/ProfileValidationErrorResponseDto' },
+      {
+        $ref: '#/components/schemas/ProfileBusinessValidationErrorResponseDto',
+      },
+      { $ref: '#/components/schemas/ProfileAvatarInvalidErrorResponseDto' },
+      { $ref: '#/components/schemas/ProfileMultipartInvalidErrorResponseDto' },
+    ]);
+    expect(badRequestSchema.discriminator).toEqual({
+      propertyName: 'code',
+      mapping: {
+        VALIDATION_ERROR:
+          '#/components/schemas/ProfileValidationErrorResponseDto',
+        PROFILE_VALIDATION_FAILED:
+          '#/components/schemas/ProfileBusinessValidationErrorResponseDto',
+        AVATAR_INVALID:
+          '#/components/schemas/ProfileAvatarInvalidErrorResponseDto',
+        MULTIPART_INVALID:
+          '#/components/schemas/ProfileMultipartInvalidErrorResponseDto',
+      },
+    });
+    expect(
+      badRequestSchema.discriminator.mapping[singleFieldResponse.body.code],
+    ).toBe('#/components/schemas/ProfileValidationErrorResponseDto');
+    expect(
+      badRequestSchema.discriminator.mapping[multipartResponse.body.code],
+    ).toBe('#/components/schemas/ProfileMultipartInvalidErrorResponseDto');
+
+    expect(schemas.ProfileValidationErrorResponseDto.required).toEqual(
+      expect.arrayContaining(['statusCode', 'code', 'message', 'details']),
+    );
+    expect(
+      schemas.ProfileValidationErrorResponseDto.properties.details.$ref,
+    ).toBe('#/components/schemas/ProfileValidationErrorDetailsDto');
+    expect(schemas.ProfileValidationErrorDetailsDto.required).toContain(
+      'fields',
+    );
+    expect(schemas.ProfileValidationErrorDetailsDto.properties.fields).toEqual(
+      expect.objectContaining({
+        type: 'array',
+        uniqueItems: true,
+        items: { type: 'string' },
+      }),
+    );
+    expect(
+      schemas.ProfileBusinessValidationErrorResponseDto.required,
+    ).toContain('details');
+    expect(schemas.ProfileBusinessValidationErrorDetailsDto.required).toContain(
+      'field',
+    );
+    for (const schemaName of [
+      'ProfileAvatarInvalidErrorResponseDto',
+      'ProfileMultipartInvalidErrorResponseDto',
+    ]) {
+      expect(schemas[schemaName].required).toEqual(
+        expect.arrayContaining(['statusCode', 'code', 'message']),
+      );
+      expect(schemas[schemaName].properties).not.toHaveProperty('details');
+    }
+  });
 
   it('does not create business routes in the API namespace', async () => {
     await request(app.getHttpServer()).get('/api/v1').expect(404);

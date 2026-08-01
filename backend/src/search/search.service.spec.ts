@@ -31,6 +31,7 @@ function dependencies(authenticated = true) {
   const media = {
     save: jest.fn(),
     deleteMany: jest.fn(),
+    deleteStrict: jest.fn(),
     read: jest.fn(),
     publicUrl: jest.fn((key: string) => `https://media.test/${key}`),
   };
@@ -64,6 +65,7 @@ describe('SearchService', () => {
         rank: index === 0 ? 1 : 2,
         authorId,
         nickname: '户外蓝友',
+        avatarObjectKey: null,
         objectKey: `${String(index).padStart(48, 'a')}.png`,
         width: 120,
         height: 160,
@@ -138,6 +140,7 @@ describe('SearchService', () => {
       {
         id: viewer.id,
         nickname: '搜索者',
+        avatarObjectKey: null,
         littleBlueBookId: '0000000001',
         createdAt: new Date('2026-07-28T10:00:00.000Z'),
         rank: 1,
@@ -176,6 +179,10 @@ describe('SearchService', () => {
       nickname: '公开蓝友',
       littleBlueBookId: '0000000002',
       gender: 'PRIVATE',
+      birthDate: null,
+      showAge: false,
+      bio: null,
+      avatarObjectKey: null,
       email: 'must-not-leak@example.com',
     });
     prisma.userFollow.count.mockResolvedValueOnce(2).mockResolvedValueOnce(3);
@@ -192,6 +199,8 @@ describe('SearchService', () => {
       nickname: '公开蓝友',
       littleBlueBookId: '0000000002',
       gender: '保密',
+      age: null,
+      bio: null,
       avatar: { type: 'initial', value: '公' },
       stats: {
         following: 2,

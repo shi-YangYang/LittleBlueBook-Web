@@ -11,39 +11,40 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
 import { ApiException } from './common/api-exception.js';
 import { ApiExceptionFilter } from './common/api-exception.filter.js';
+import { extractValidationFieldPaths } from './common/validation-fields.js';
 import type { AppEnvironment } from './config/environment.js';
 
-function validationMessage(errors: ValidationError[]): string {
-  const fields = new Set(errors.map((error) => error.property));
+function validationMessage(fields: readonly string[]): string {
+  const fieldSet = new Set(fields);
 
-  if (fields.has('acceptedTerms')) {
+  if (fieldSet.has('acceptedTerms')) {
     return '请先阅读并同意用户协议与隐私政策';
   }
-  if (fields.has('email')) {
+  if (fieldSet.has('email')) {
     return '请输入有效的邮箱地址';
   }
-  if (fields.has('nickname')) {
+  if (fieldSet.has('nickname')) {
     return '昵称需为2～20个中文、字母、数字或下划线';
   }
-  if (fields.has('code')) {
+  if (fieldSet.has('code')) {
     return '请输入6位数字验证码';
   }
-  if (fields.has('title')) {
+  if (fieldSet.has('title')) {
     return '标题需为1～50个字符';
   }
-  if (fields.has('content')) {
+  if (fieldSet.has('content')) {
     return '正文需为1～2000个字符';
   }
-  if (fields.has('channelCode')) {
+  if (fieldSet.has('channelCode')) {
     return '请选择有效频道';
   }
-  if (fields.has('clientRequestId')) {
+  if (fieldSet.has('clientRequestId')) {
     return '发布请求标识无效';
   }
-  if (fields.has('cursor') || fields.has('limit')) {
+  if (fieldSet.has('cursor') || fieldSet.has('limit')) {
     return '分页参数无效';
   }
-  if (fields.has('keyword')) {
+  if (fieldSet.has('keyword')) {
     return '搜索内容需为1～50个字符';
   }
   return '请求参数无效';
@@ -92,8 +93,15 @@ export function configureApplication(app: INestApplication): void {
       transform: true,
       whitelist: true,
       forbidNonWhitelisted: true,
-      exceptionFactory: (errors) =>
-        new ApiException(400, 'VALIDATION_ERROR', validationMessage(errors)),
+      exceptionFactory: (errors: ValidationError[]) => {
+        const fields = extractValidationFieldPaths(errors);
+        return new ApiException(
+          400,
+          'VALIDATION_ERROR',
+          validationMessage(fields),
+          { fields },
+        );
+      },
     }),
   );
   app.setGlobalPrefix('api/v1', {

@@ -1,3 +1,5 @@
+import type { ProfileAvatar } from '../profile/profile-avatar.js';
+
 export type RelationshipResult = {
   active: boolean;
   count: number;
@@ -10,10 +12,7 @@ export type FollowResult = {
 export type CommentAuthor = {
   id: string;
   nickname: string;
-  avatar: {
-    type: 'initial';
-    value: string;
-  };
+  avatar: ProfileAvatar;
 };
 
 export type NoteCommentData = {

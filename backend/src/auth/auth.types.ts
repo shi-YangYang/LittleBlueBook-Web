@@ -1,7 +1,10 @@
+import type { ProfileAvatar } from '../profile/profile-avatar.js';
+
 export type PublicUser = {
   id: string;
   email: string;
   nickname: string;
+  avatar: ProfileAvatar;
 };
 
 export type AuthenticatedResult = {

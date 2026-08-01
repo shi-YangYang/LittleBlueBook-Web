@@ -14,6 +14,7 @@ import {
   type UploadedMemoryFile,
 } from '../media/media.types.js';
 import { RedisService } from '../redis/redis.service.js';
+import { publicAvatar } from '../profile/profile-avatar.js';
 import type {
   NoteCard,
   NoteDetail,
@@ -228,6 +229,7 @@ export class NotesService {
           select: {
             id: true,
             nickname: true,
+            avatarObjectKey: true,
             followers: {
               where: { followerId: viewerId },
               take: 1,
@@ -279,7 +281,11 @@ export class NotesService {
       title: note.title,
       content: note.content,
       createdAt: note.createdAt.toISOString(),
-      author: this.author(note.author.id, note.author.nickname),
+      author: this.author(
+        note.author.id,
+        note.author.nickname,
+        note.author.avatarObjectKey,
+      ),
       channel: note.channel.isPublic
         ? {
             code: note.channel.code,
@@ -351,7 +357,9 @@ export class NotesService {
         id: true,
         title: true,
         createdAt: true,
-        author: { select: { id: true, nickname: true } },
+        author: {
+          select: { id: true, nickname: true, avatarObjectKey: true },
+        },
         images: {
           where: { order: 0 },
           take: 1,
@@ -422,7 +430,9 @@ export class NotesService {
         select: {
           id: true,
           title: true,
-          author: { select: { id: true, nickname: true } },
+          author: {
+            select: { id: true, nickname: true, avatarObjectKey: true },
+          },
           images: {
             where: { order: 0 },
             take: 1,
@@ -476,7 +486,11 @@ export class NotesService {
     note: {
       id: string;
       title: string;
-      author: { id: string; nickname: string };
+      author: {
+        id: string;
+        nickname: string;
+        avatarObjectKey: string | null;
+      };
       images: Array<{
         objectKey: string;
         width: number;
@@ -503,21 +517,22 @@ export class NotesService {
         width: cover.width,
         height: cover.height,
       },
-      author: this.author(note.author.id, note.author.nickname),
+      author: this.author(
+        note.author.id,
+        note.author.nickname,
+        note.author.avatarObjectKey,
+      ),
       likes: note._count.likes,
       liked: (note.likes?.length ?? 0) > 0,
       canLike: viewerId !== note.author.id,
     };
   }
 
-  private author(id: string, nickname: string) {
+  private author(id: string, nickname: string, avatarObjectKey: string | null) {
     return {
       id,
       nickname,
-      avatar: {
-        type: 'initial' as const,
-        value: Array.from(nickname.trim())[0] ?? '蓝',
-      },
+      avatar: publicAvatar(nickname, avatarObjectKey, this.media),
     };
   }
 

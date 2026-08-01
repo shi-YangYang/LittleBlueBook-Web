@@ -1,3 +1,4 @@
+import type { ProfileAvatar } from '../_components/avatar';
 import type { NotePageData } from './notes';
 
 export type SearchType = 'note' | 'video' | 'user';
@@ -6,10 +7,7 @@ export type SearchUserCardData = {
   id: string;
   nickname: string;
   littleBlueBookId: string;
-  avatar: {
-    type: 'initial';
-    value: string;
-  };
+  avatar: ProfileAvatar;
   followers: number;
   notes: number;
   viewer: {
@@ -30,10 +28,9 @@ export type PublicUserProfileData = {
   nickname: string;
   littleBlueBookId: string;
   gender: '男' | '女' | '保密';
-  avatar: {
-    type: 'initial';
-    value: string;
-  };
+  age: number | null;
+  bio: string | null;
+  avatar: ProfileAvatar;
   stats: {
     following: number;
     followers: number;

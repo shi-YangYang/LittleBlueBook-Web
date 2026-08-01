@@ -9,6 +9,8 @@ import { PrismaService } from '../database/prisma.service.js';
 import { Prisma, type Gender } from '../generated/prisma/client.js';
 import { MEDIA_STORAGE, type MediaStorage } from '../media/media.types.js';
 import type { NoteCard, NotePage } from '../notes/notes.types.js';
+import { calculateAge } from '../profile/profile-age.js';
+import { publicAvatar } from '../profile/profile-avatar.js';
 import type { ProfileGender } from '../profile/profile.types.js';
 import type {
   EmptyVideoPage,
@@ -30,6 +32,7 @@ type NoteSearchRow = {
   rank: number;
   authorId: string;
   nickname: string;
+  avatarObjectKey: string | null;
   objectKey: string;
   width: number;
   height: number;
@@ -40,6 +43,7 @@ type NoteSearchRow = {
 type UserSearchRow = {
   id: string;
   nickname: string;
+  avatarObjectKey: string | null;
   littleBlueBookId: string;
   createdAt: Date;
   rank: number;
@@ -144,6 +148,7 @@ export class SearchService {
           n."createdAt",
           u."id" AS "authorId",
           u."nickname",
+          u."avatarObjectKey",
           cover."objectKey",
           cover."width",
           cover."height",
@@ -245,6 +250,7 @@ export class SearchService {
           u."id",
           u."nickname",
           u."littleBlueBookId",
+          u."avatarObjectKey",
           u."createdAt",
           CASE
             WHEN lower(u."nickname") = lower(${normalized}) THEN 1
@@ -280,7 +286,7 @@ export class SearchService {
           id: row.id,
           nickname: row.nickname,
           littleBlueBookId: row.littleBlueBookId,
-          avatar: this.avatar(row.nickname),
+          avatar: publicAvatar(row.nickname, row.avatarObjectKey, this.media),
           followers: Number(row.followers),
           notes: Number(row.notes),
           viewer: {
@@ -316,6 +322,10 @@ export class SearchService {
         nickname: true,
         littleBlueBookId: true,
         gender: true,
+        birthDate: true,
+        showAge: true,
+        bio: true,
+        avatarObjectKey: true,
       },
     });
     if (!user) throw this.userNotFound();
@@ -346,7 +356,9 @@ export class SearchService {
       nickname: user.nickname,
       littleBlueBookId: user.littleBlueBookId,
       gender: GENDER_LABELS[user.gender],
-      avatar: this.avatar(user.nickname),
+      age: user.birthDate && user.showAge ? calculateAge(user.birthDate) : null,
+      bio: user.bio,
+      avatar: publicAvatar(user.nickname, user.avatarObjectKey, this.media),
       stats: {
         following,
         followers,
@@ -400,7 +412,9 @@ export class SearchService {
         id: true,
         title: true,
         createdAt: true,
-        author: { select: { id: true, nickname: true } },
+        author: {
+          select: { id: true, nickname: true, avatarObjectKey: true },
+        },
         images: {
           where: { order: 0 },
           take: 1,
@@ -429,6 +443,7 @@ export class SearchService {
             height: note.images[0]?.height ?? 0,
             authorId: note.author.id,
             nickname: note.author.nickname,
+            avatarObjectKey: note.author.avatarObjectKey,
             rank: 0,
             likes: note._count.likes,
             liked: (note.likes?.length ?? 0) > 0,
@@ -467,18 +482,11 @@ export class SearchService {
       author: {
         id: row.authorId,
         nickname: row.nickname,
-        avatar: this.avatar(row.nickname),
+        avatar: publicAvatar(row.nickname, row.avatarObjectKey, this.media),
       },
       likes: Number(row.likes),
       liked: Boolean(row.liked),
       canLike: viewerId !== row.authorId,
-    };
-  }
-
-  private avatar(nickname: string) {
-    return {
-      type: 'initial' as const,
-      value: Array.from(nickname.trim())[0] ?? '蓝',
     };
   }
 

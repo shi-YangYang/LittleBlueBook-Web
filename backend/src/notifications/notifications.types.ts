@@ -1,3 +1,5 @@
+import type { ProfileAvatar } from '../profile/profile-avatar.js';
+
 export type NotificationTab = 'all' | 'comments' | 'reactions' | 'follows';
 
 export type NotificationItem = {
@@ -10,10 +12,7 @@ export type NotificationItem = {
     id: string | null;
     nickname: string;
     littleBlueBookId: string | null;
-    avatar: {
-      type: 'initial';
-      value: string;
-    };
+    avatar: ProfileAvatar;
   };
   note: {
     id: string;

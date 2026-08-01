@@ -19,6 +19,7 @@ type SearchDialogProps = {
   open: boolean;
   initialKeyword?: string;
   onClose: () => void;
+  onNavigate?: (path: string) => void;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
 };
 
@@ -26,6 +27,7 @@ export function SearchDialog({
   open,
   initialKeyword = '',
   onClose,
+  onNavigate,
   returnFocusRef,
 }: SearchDialogProps) {
   if (!open || typeof document === 'undefined') return null;
@@ -34,6 +36,7 @@ export function SearchDialog({
     <OpenSearchDialog
       initialKeyword={initialKeyword}
       onClose={onClose}
+      onNavigate={onNavigate}
       returnFocusRef={returnFocusRef}
     />,
     document.body,
@@ -43,6 +46,7 @@ export function SearchDialog({
 function OpenSearchDialog({
   initialKeyword = '',
   onClose,
+  onNavigate,
   returnFocusRef,
 }: Omit<SearchDialogProps, 'open'>) {
   const router = useRouter();
@@ -82,7 +86,12 @@ function OpenSearchDialog({
     }
     setError('');
     onClose();
-    router.push(`/search?keyword=${encodeURIComponent(keyword)}&type=note`);
+    const path = `/search?keyword=${encodeURIComponent(keyword)}&type=note`;
+    if (onNavigate) {
+      onNavigate(path);
+    } else {
+      router.push(path);
+    }
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -173,9 +182,13 @@ function OpenSearchDialog({
 
 type SearchTriggerProps = {
   currentKeyword?: string;
+  onNavigate?: (path: string, origin: HTMLButtonElement | null) => void;
 };
 
-export function SearchTrigger({ currentKeyword = '' }: SearchTriggerProps) {
+export function SearchTrigger({
+  currentKeyword = '',
+  onNavigate,
+}: SearchTriggerProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const text = currentKeyword || '搜索感兴趣的内容';
@@ -196,6 +209,11 @@ export function SearchTrigger({ currentKeyword = '' }: SearchTriggerProps) {
         open={open}
         initialKeyword={currentKeyword}
         onClose={() => setOpen(false)}
+        onNavigate={
+          onNavigate
+            ? (path) => onNavigate(path, triggerRef.current)
+            : undefined
+        }
         returnFocusRef={triggerRef}
       />
     </>

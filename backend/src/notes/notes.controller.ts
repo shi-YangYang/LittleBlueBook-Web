@@ -32,6 +32,11 @@ import { SESSION_COOKIE_NAME } from '../auth/auth.constants.js';
 import { readCookie } from '../auth/cookies.js';
 import type { UploadedMemoryFile } from '../media/media.types.js';
 import { ListNotesDto } from './dto/list-notes.dto.js';
+import {
+  NoteDetailResponseDto,
+  NotePageResponseDto,
+  PublishNoteResponseDto,
+} from './dto/note-response.dto.js';
 import { PublishNoteDto } from './dto/publish-note.dto.js';
 import { NotesService } from './notes.service.js';
 import type { NoteDetail, NotePage, PublishResult } from './notes.types.js';
@@ -85,7 +90,10 @@ export class NotesController {
       },
     },
   })
-  @ApiCreatedResponse({ description: 'The note was published' })
+  @ApiCreatedResponse({
+    description: 'The note was published',
+    type: PublishNoteResponseDto,
+  })
   @ApiBadRequestResponse({ description: 'Text or image validation failed' })
   @ApiTooManyRequestsResponse({ description: 'Publish rate limit reached' })
   @ApiUnauthorizedResponse({ description: 'Authentication is required' })
@@ -116,7 +124,10 @@ export class NotesController {
       maxLength: 32,
     },
   })
-  @ApiOkResponse({ description: 'A cursor-paginated channel note feed' })
+  @ApiOkResponse({
+    description: 'A cursor-paginated channel note feed',
+    type: NotePageResponseDto,
+  })
   @ApiNotFoundResponse({ description: 'The channel is missing or disabled' })
   async channel(
     @Req() request: Request,
@@ -135,7 +146,10 @@ export class NotesController {
 
   @Get('recommendations')
   @ApiOperation({ summary: 'List public notes newest first' })
-  @ApiOkResponse({ description: 'A cursor-paginated public note feed' })
+  @ApiOkResponse({
+    description: 'A cursor-paginated public note feed',
+    type: NotePageResponseDto,
+  })
   async recommendations(
     @Req() request: Request,
     @Query() query: ListNotesDto,
@@ -151,7 +165,10 @@ export class NotesController {
 
   @Get('mine')
   @ApiOperation({ summary: 'List notes by the current authenticated user' })
-  @ApiOkResponse({ description: 'The current user note page' })
+  @ApiOkResponse({
+    description: 'The current user note page',
+    type: NotePageResponseDto,
+  })
   @ApiUnauthorizedResponse({ description: 'Authentication is required' })
   async mine(
     @Req() request: Request,
@@ -168,7 +185,10 @@ export class NotesController {
 
   @Get('favorites')
   @ApiOperation({ summary: 'List notes favorited by the current user' })
-  @ApiOkResponse({ description: 'Notes ordered by favorite time descending' })
+  @ApiOkResponse({
+    description: 'Notes ordered by favorite time descending',
+    type: NotePageResponseDto,
+  })
   @ApiUnauthorizedResponse({ description: 'Authentication is required' })
   async favorites(
     @Req() request: Request,
@@ -185,7 +205,10 @@ export class NotesController {
 
   @Get('liked')
   @ApiOperation({ summary: 'List notes liked by the current user' })
-  @ApiOkResponse({ description: 'Notes ordered by like time descending' })
+  @ApiOkResponse({
+    description: 'Notes ordered by like time descending',
+    type: NotePageResponseDto,
+  })
   @ApiUnauthorizedResponse({ description: 'Authentication is required' })
   async liked(
     @Req() request: Request,
@@ -205,46 +228,7 @@ export class NotesController {
   @ApiOkResponse({
     description:
       'The complete public note detail, including its public channel',
-    schema: {
-      type: 'object',
-      required: ['data'],
-      properties: {
-        data: {
-          type: 'object',
-          required: [
-            'id',
-            'title',
-            'content',
-            'createdAt',
-            'author',
-            'channel',
-            'images',
-            'interactions',
-          ],
-          properties: {
-            id: { type: 'string', format: 'uuid' },
-            title: { type: 'string' },
-            content: { type: 'string' },
-            createdAt: { type: 'string', format: 'date-time' },
-            author: { type: 'object' },
-            channel: {
-              type: 'object',
-              nullable: true,
-              description:
-                'Null for an internal legacy channel; navigable is false when a public channel is disabled',
-              required: ['code', 'name', 'navigable'],
-              properties: {
-                code: { type: 'string', example: 'digital' },
-                name: { type: 'string', example: '数码' },
-                navigable: { type: 'boolean' },
-              },
-            },
-            images: { type: 'array', items: { type: 'object' } },
-            interactions: { type: 'object' },
-          },
-        },
-      },
-    },
+    type: NoteDetailResponseDto,
   })
   @ApiNotFoundResponse({ description: 'The note does not exist' })
   async detail(
