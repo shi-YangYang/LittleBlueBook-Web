@@ -1,12 +1,28 @@
 # 小蓝书 Web _(LittleBlueBook-Web)_
 
-[![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
+<p align="center">
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-24-5FA04E?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white" alt="Node.js 24"></a>
+  <a href="https://pnpm.io/"><img src="https://img.shields.io/badge/pnpm-11-F69220?style=flat-square&amp;logo=pnpm&amp;logoColor=white" alt="pnpm 11"></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat-square&amp;logo=typescript&amp;logoColor=white" alt="TypeScript 5.9"></a>
+  <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-16-000000?style=flat-square&amp;logo=nextdotjs&amp;logoColor=white" alt="Next.js 16"></a>
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&amp;logo=react&amp;logoColor=000000" alt="React 19"></a>
+  <a href="https://tailwindcss.com/"><img src="https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=flat-square&amp;logo=tailwindcss&amp;logoColor=white" alt="Tailwind CSS 4"></a>
+  <a href="https://nestjs.com/"><img src="https://img.shields.io/badge/NestJS-11-E0234E?style=flat-square&amp;logo=nestjs&amp;logoColor=white" alt="NestJS 11"></a>
+  <a href="https://www.postgresql.org/"><img src="https://img.shields.io/badge/PostgreSQL-18-4169E1?style=flat-square&amp;logo=postgresql&amp;logoColor=white" alt="PostgreSQL 18"></a>
+  <a href="https://www.prisma.io/"><img src="https://img.shields.io/badge/Prisma-7-2D3748?style=flat-square&amp;logo=prisma&amp;logoColor=white" alt="Prisma 7"></a>
+  <a href="https://redis.io/"><img src="https://img.shields.io/badge/Redis-8-FF4438?style=flat-square&amp;logo=redis&amp;logoColor=white" alt="Redis 8"></a>
+  <a href="https://vitest.dev/"><img src="https://img.shields.io/badge/Vitest-4-6E9F18?style=flat-square&amp;logo=vitest&amp;logoColor=white" alt="Vitest 4"></a>
+  <a href="https://jestjs.io/"><img src="https://img.shields.io/badge/Jest-30-C21325?style=flat-square&amp;logo=jest&amp;logoColor=white" alt="Jest 30"></a>
+  <a href="https://playwright.dev/"><img src="https://img.shields.io/badge/Playwright-1-2EAD33?style=flat-square&amp;logo=playwright&amp;logoColor=white" alt="Playwright 1"></a>
+  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&amp;logo=docker&amp;logoColor=white" alt="Docker Compose"></a>
+  <a href="https://github.com/features/actions"><img src="https://img.shields.io/badge/GitHub_Actions-Manual_CI-2088FF?style=flat-square&amp;logo=githubactions&amp;logoColor=white" alt="GitHub Actions 手动 CI"></a>
+</p>
 
 小蓝书，专为西格玛男士打造
 
 小蓝书是聚焦男性用户的 Web 内容社区，参考内容社区的信息架构，并采用蓝色品牌视觉形成差异化体验。
 
-当前版本已经具备社区首页、邮箱验证码注册与登录、会话恢复、登录用户个人主页，以及图文笔记发布、推荐信息流与公开详情。真实关注与互动、搜索和推荐算法等能力尚未实现，后续功能均通过 SDD（规格驱动开发）流程逐项交付。
+当前版本已经打通邮箱认证、个人资料、图文发布与频道、社区互动、搜索、通知、笔记浏览量和互关用户一对一私信。首页“推荐”频道当前展示真实内容，但尚未接入个性化推荐算法；后续功能继续通过 SDD（规格驱动开发）流程逐项交付。
 
 ## 目录
 
@@ -32,10 +48,16 @@
 
 - 小蓝书品牌化社区首页；
 - 邮箱验证码注册、登录、会话恢复与退出登录；
-- 用户昵称、小蓝书号、性别及个人主页；
+- 用户头像、昵称、小蓝书号、性别、出生日期、简介、个人主页与资料设置；
 - 1～9 张图片的图文笔记发布、本地持久化媒体与公开详情；
-- 首页真实推荐信息流，以及个人主页真实“笔记”列表；
-- “收藏”“点赞”个人主页标签页和真实空状态；
+- 笔记频道选择、首页频道筛选及“推荐”信息流；
+- 笔记点赞、收藏、关注、两级评论回复与评论点赞；
+- 笔记、视频和用户搜索，以及其他用户公开主页；
+- 互动通知中心、通知已读和评论目标定位；
+- 登录与匿名访问的笔记浏览量统计和 `30` 分钟去重；
+- 互相关注用户的一对一纯文本私信、未读/已读状态、WebSocket 实时同步与 HTTP 补偿；
+- 个人主页“笔记”“收藏”“点赞”列表及对应空状态；
+- 最低 `960×600 CSS px` 的连续自适应布局与受控滚动模型；
 - 前后端测试、Playwright E2E、生产镜像与手动 CI 工程基础。
 
 ## 安装
@@ -259,14 +281,15 @@ compose.yaml    PostgreSQL 与 Redis 本地开发服务
 
 ## 技术栈
 
-| 领域  | 技术                                             |
-| ----- | ------------------------------------------------ |
-| 前端  | Next.js 16、React 19、TypeScript、Tailwind CSS 4 |
-| 后端  | NestJS 11、REST、OpenAPI、TypeScript             |
-| 数据  | PostgreSQL 18、Prisma ORM 7、Redis 8             |
-| 测试  | Vitest 4、Jest 30、Playwright 1                  |
-| 工程  | Node.js 24、pnpm 11 Workspace、Docker Compose    |
-| CI/CD | GitHub Actions、GHCR、Docker Compose             |
+| 领域     | 技术                                                         |
+| -------- | ------------------------------------------------------------ |
+| 前端     | Next.js 16、React 19、TypeScript 5.9、Tailwind CSS 4         |
+| 后端     | NestJS 11、REST、OpenAPI、WebSocket、TypeScript 5.9          |
+| 数据     | PostgreSQL 18、Prisma ORM 7、Redis 8                         |
+| 测试     | Vitest 4、Jest 30、Playwright 1                              |
+| 工程     | Node.js 24、pnpm 11 Workspace、Docker 与 Docker Compose      |
+| CI       | GitHub Actions `workflow_dispatch` 手动检查                   |
+| 部署目标 | GHCR + 单机 Docker Compose，发布和生产部署流水线尚待后续实施 |
 
 详细且具有约束力的技术说明见 [`constitution/tech-stack.md`](constitution/tech-stack.md)。
 
@@ -283,7 +306,7 @@ http://127.0.0.1:3001/api/v1
 - OpenAPI UI：http://127.0.0.1:3001/docs
 - OpenAPI JSON：http://127.0.0.1:3001/docs-json
 
-当前 API 覆盖邮箱验证码、注册、登录、会话、退出登录、当前用户资料、图文笔记发布、推荐/个人笔记分页、公开笔记详情和公开媒体读取。服务端凭据、SMTP 授权码、用户邮箱、会话信息与媒体绝对路径不会通过公开内容接口暴露。
+当前 API 覆盖邮箱验证码、注册、登录、会话与退出登录，个人资料读取和设置，频道与图文笔记发布，推荐/频道/个人内容分页，公开笔记详情和媒体读取，点赞、收藏、关注、两级评论回复与评论点赞，笔记和用户搜索，互动通知，笔记浏览量，以及一对一私信、未读/已读和 WebSocket 实时事件。服务端凭据、SMTP 授权码、用户邮箱、会话信息、匿名访客原始标识与媒体绝对路径不会通过公开接口暴露。
 
 ## 维护者
 
