@@ -65,14 +65,27 @@ export class NoteCommentDto {
   @ApiProperty({ type: String, format: 'uuid' })
   id!: string;
 
-  @ApiProperty({ type: String, example: '很有帮助，感谢分享！' })
-  content!: string;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  rootCommentId!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: '很有帮助，感谢分享！',
+  })
+  content!: string | null;
 
   @ApiProperty({ type: String, format: 'date-time' })
   createdAt!: string;
 
-  @ApiProperty({ type: () => CommentAuthorDto })
-  author!: CommentAuthorDto;
+  @ApiProperty({ type: Boolean })
+  deleted!: boolean;
+
+  @ApiProperty({ type: () => CommentAuthorDto, nullable: true })
+  author!: CommentAuthorDto | null;
+
+  @ApiProperty({ type: Object, nullable: true })
+  replyTo!: { id: string; nickname: string | null; deleted: boolean } | null;
 
   @ApiProperty({
     type: Boolean,
@@ -85,6 +98,27 @@ export class NoteCommentDto {
     description: 'Whether the current viewer may delete this comment',
   })
   canDelete!: boolean;
+
+  @ApiProperty({ type: Boolean })
+  canReply!: boolean;
+
+  @ApiProperty({ type: Number, minimum: 0 })
+  likes!: number;
+
+  @ApiProperty({ type: Boolean })
+  liked!: boolean;
+
+  @ApiProperty({ type: Boolean })
+  canLike!: boolean;
+
+  @ApiProperty({ type: () => NoteCommentDto, isArray: true })
+  replies!: NoteCommentDto[];
+
+  @ApiProperty({ type: Number, minimum: 0 })
+  replyCount!: number;
+
+  @ApiProperty({ type: String, nullable: true })
+  repliesNextCursor!: string | null;
 }
 
 export class CommentPageDto {
@@ -124,6 +158,9 @@ export class CommentMutationResponseDto {
 export class CommentDeletionResultDto {
   @ApiProperty({ type: Boolean, enum: [true], example: true })
   deleted!: true;
+
+  @ApiProperty({ type: Boolean })
+  placeholder!: boolean;
 
   @ApiProperty({ type: Number, minimum: 0, example: 0 })
   total!: number;

@@ -16,6 +16,7 @@ export type NoteCardData = {
   likes: number;
   liked: boolean;
   canLike: boolean;
+  views: number;
 };
 
 export type NotePageData = {
@@ -43,6 +44,7 @@ export type NoteDetailData = {
     likes: number;
     favorites: number;
     comments: number;
+    views: number;
   };
   viewer: {
     authenticated: boolean;
@@ -57,15 +59,29 @@ export type NoteDetailData = {
 
 export type NoteCommentData = {
   id: string;
-  content: string;
+  rootCommentId: string | null;
+  content: string | null;
   createdAt: string;
+  deleted: boolean;
   author: {
     id: string;
     nickname: string;
     avatar: ProfileAvatar;
-  };
+  } | null;
+  replyTo: {
+    id: string;
+    nickname: string | null;
+    deleted: boolean;
+  } | null;
   isAuthor: boolean;
   canDelete: boolean;
+  canReply: boolean;
+  likes: number;
+  liked: boolean;
+  canLike: boolean;
+  replies: NoteCommentData[];
+  replyCount: number;
+  repliesNextCursor: string | null;
 };
 
 export type CommentPageData = {

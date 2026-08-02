@@ -45,6 +45,9 @@ class SearchNoteCardDto {
 
   @ApiProperty({ type: Boolean })
   canLike!: boolean;
+
+  @ApiProperty({ type: Number, minimum: 0 })
+  views!: number;
 }
 
 class SearchViewerDto {
@@ -59,6 +62,11 @@ class SearchViewerDto {
 
   @ApiProperty({ type: Boolean })
   canFollow!: boolean;
+}
+
+class PublicProfileViewerDto extends SearchViewerDto {
+  @ApiProperty({ type: Boolean })
+  canMessage!: boolean;
 }
 
 class SearchUserCardDto {
@@ -163,8 +171,8 @@ export class PublicUserProfileDto {
   @ApiProperty({ type: () => PublicProfileStatsDto })
   stats!: PublicProfileStatsDto;
 
-  @ApiProperty({ type: () => SearchViewerDto })
-  viewer!: SearchViewerDto;
+  @ApiProperty({ type: () => PublicProfileViewerDto })
+  viewer!: PublicProfileViewerDto;
 }
 
 export class PublicUserProfileResponseDto {

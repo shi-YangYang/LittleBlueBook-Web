@@ -37,6 +37,7 @@
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "sharp": "0.34.5",
+    "ws": "8.18.3",
     "zod": "4.4.3"
   },
   "devDependencies": {
@@ -50,6 +51,7 @@
     "@types/nodemailer": "7.0.11",
     "@types/pg": "8.20.0",
     "@types/supertest": "7.2.1",
+    "@types/ws": "8.18.1",
     "eslint": "9.39.5",
     "globals": "17.7.0",
     "jest": "30.4.2",

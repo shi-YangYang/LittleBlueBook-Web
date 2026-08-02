@@ -29,8 +29,8 @@ const UUID_PATTERN =
 
 const TAB_TYPES: Record<NotificationTab, NotificationType[] | undefined> = {
   all: undefined,
-  comments: ['NOTE_COMMENTED'],
-  reactions: ['NOTE_LIKED', 'NOTE_FAVORITED'],
+  comments: ['NOTE_COMMENTED', 'COMMENT_REPLIED'],
+  reactions: ['NOTE_LIKED', 'NOTE_FAVORITED', 'COMMENT_LIKED'],
   follows: ['USER_FOLLOWED'],
 };
 
@@ -39,6 +39,8 @@ const ACTIONS: Record<NotificationType, string> = {
   NOTE_FAVORITED: '收藏了你的笔记',
   NOTE_COMMENTED: '评论了你的笔记',
   USER_FOLLOWED: '关注了你',
+  COMMENT_REPLIED: '回复了你的评论',
+  COMMENT_LIKED: '赞了你的评论',
 };
 
 @Injectable()
@@ -112,7 +114,10 @@ export class NotificationsService {
         },
         comment: {
           select: {
+            id: true,
+            rootCommentId: true,
             content: true,
+            deletedAt: true,
           },
         },
       },
@@ -223,7 +228,12 @@ export class NotificationsService {
         height: number;
       }>;
     } | null;
-    comment: { content: string } | null;
+    comment: {
+      id: string;
+      rootCommentId: string | null;
+      content: string;
+      deletedAt: Date | null;
+    } | null;
   }): NotificationItem {
     const actorNickname = notification.actor?.nickname ?? '该用户已注销';
     const image = notification.note?.images[0];
@@ -257,14 +267,24 @@ export class NotificationsService {
           }
         : null,
       comment:
-        notification.type === 'NOTE_COMMENTED'
+        notification.type === 'NOTE_COMMENTED' ||
+        notification.type === 'COMMENT_REPLIED' ||
+        notification.type === 'COMMENT_LIKED'
           ? {
-              preview: notification.comment
-                ? Array.from(notification.comment.content)
-                    .slice(0, 200)
-                    .join('')
-                : null,
-              deleted: notification.comment === null,
+              id: notification.comment?.id ?? null,
+              rootCommentId:
+                notification.comment?.rootCommentId ??
+                notification.comment?.id ??
+                null,
+              preview:
+                notification.comment && !notification.comment.deletedAt
+                  ? Array.from(notification.comment.content)
+                      .slice(0, 200)
+                      .join('')
+                  : null,
+              deleted:
+                notification.comment === null ||
+                Boolean(notification.comment.deletedAt),
             }
           : null,
     };

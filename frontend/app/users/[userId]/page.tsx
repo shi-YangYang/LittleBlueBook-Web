@@ -216,6 +216,33 @@ export default function PublicUserPage() {
                           ? '已关注'
                           : '关注'}
                     </button>
+                    <button
+                      className="public-profile-message-action"
+                      type="button"
+                      disabled={
+                        profile.viewer.authenticated &&
+                        !profile.viewer.canMessage
+                      }
+                      title={
+                        profile.viewer.authenticated &&
+                        !profile.viewer.canMessage
+                          ? '互相关注后可私信'
+                          : undefined
+                      }
+                      onClick={() => {
+                        const destination = `/messages?user=${encodeURIComponent(profile.id)}`;
+                        if (!profile.viewer.authenticated) {
+                          pendingDestinationRef.current = destination;
+                          setAuthOpen(true);
+                        } else if (profile.viewer.canMessage) {
+                          router.push(destination);
+                        } else {
+                          setToast('互相关注后可私信');
+                        }
+                      }}
+                    >
+                      私信
+                    </button>
                   </div>
                   <p className="profile-gender">性别：{profile.gender}</p>
                   {profile.age == null ? null : (

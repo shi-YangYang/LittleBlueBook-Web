@@ -50,6 +50,50 @@ export function formatNoteTime(value: string, now = Date.now()): string {
   return `${days}天前`;
 }
 
+function updateCommentTree(
+  comments: NoteCommentData[],
+  commentId: string,
+  update: (comment: NoteCommentData) => NoteCommentData | null,
+): NoteCommentData[] {
+  return comments.flatMap((root) => {
+    if (root.id === commentId) {
+      const next = update(root);
+      return next ? [next] : [];
+    }
+    let removedReply = false;
+    const replies = root.replies.flatMap((reply) => {
+      if (reply.id !== commentId) return [reply];
+      const next = update(reply);
+      if (!next) removedReply = true;
+      return next ? [next] : [];
+    });
+    return [
+      {
+        ...root,
+        replies,
+        replyCount: Math.max(0, root.replyCount - (removedReply ? 1 : 0)),
+      },
+    ];
+  });
+}
+
+function normalizeComment(comment: NoteCommentData): NoteCommentData {
+  return {
+    ...comment,
+    rootCommentId: comment.rootCommentId ?? null,
+    content: comment.content ?? null,
+    deleted: comment.deleted ?? false,
+    replyTo: comment.replyTo ?? null,
+    canReply: comment.canReply ?? !comment.deleted,
+    likes: comment.likes ?? 0,
+    liked: comment.liked ?? false,
+    canLike: comment.canLike ?? true,
+    replies: (comment.replies ?? []).map(normalizeComment),
+    replyCount: comment.replyCount ?? comment.replies?.length ?? 0,
+    repliesNextCursor: comment.repliesNextCursor ?? null,
+  };
+}
+
 export default function NoteDetailPage({
   params,
 }: {
@@ -79,6 +123,19 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
   const [commentDraft, setCommentDraft] = useState('');
   const [commentError, setCommentError] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<NoteCommentData | null>(null);
+  const [commentLikeBusy, setCommentLikeBusy] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [replyLoadingIds, setReplyLoadingIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [replyErrorIds, setReplyErrorIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [highlightCommentId, setHighlightCommentId] = useState<string | null>(
+    null,
+  );
   const [comments, setComments] = useState<NoteCommentData[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(true);
   const [commentsError, setCommentsError] = useState(false);
@@ -97,6 +154,15 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
   const authReturnFocusRef = useRef<HTMLElement | null>(null);
   const deleteDialogRef = useRef<HTMLDivElement>(null);
   const deleteReturnFocusRef = useRef<HTMLButtonElement | null>(null);
+  const deleteFocusRequestRef = useRef<{
+    focusCommentEntry: boolean;
+    returnTarget: HTMLButtonElement | null;
+  } | null>(null);
+  const locatedCommentRef = useRef(false);
+
+  useEffect(() => {
+    locatedCommentRef.current = false;
+  }, [noteId]);
 
   useEffect(() => {
     bindNoteDetailSource(noteId);
@@ -141,6 +207,31 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
   }, [noteId, reloadVersion]);
 
   useEffect(() => {
+    if (note?.id !== noteId) return;
+    const controller = new AbortController();
+    void apiRequest<{ counted: boolean; viewCount: number }>(
+      `/notes/${noteId}/views`,
+      { method: 'POST', signal: controller.signal },
+    )
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setNote((current) =>
+          current
+            ? {
+                ...current,
+                interactions: {
+                  ...current.interactions,
+                  views: Math.max(0, result.viewCount),
+                },
+              }
+            : current,
+        );
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [note?.id, noteId]);
+
+  useEffect(() => {
     const controller = new AbortController();
     let active = true;
     void Promise.resolve().then(async () => {
@@ -156,7 +247,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
           { signal: controller.signal },
         );
         if (!active) return;
-        setComments(page.items);
+        setComments(page.items.map(normalizeComment));
         setCommentsCursor(page.nextCursor);
         setNote((current) =>
           current
@@ -184,6 +275,88 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
   }, [commentsReloadVersion, noteId]);
 
   useEffect(() => {
+    if (commentsLoading || commentsError || locatedCommentRef.current) return;
+    const parameters = new URLSearchParams(window.location.search);
+    const targetId = parameters.get('comment');
+    const rootId = parameters.get('root') ?? targetId;
+    if (!targetId || !rootId) {
+      if (parameters.get('commentDeleted') === '1') {
+        locatedCommentRef.current = true;
+        queueMicrotask(() => setToast('相关评论已删除'));
+      }
+      return;
+    }
+    locatedCommentRef.current = true;
+    let cancelled = false;
+    void Promise.resolve()
+      .then(async () => {
+        let roots = comments;
+        let rootCursor = commentsCursor;
+        let root = roots.find((comment) => comment.id === rootId);
+        while (!root && rootCursor && !cancelled) {
+          const page = await apiRequest<CommentPageData>(
+            `/notes/${noteId}/comments?limit=20&cursor=${encodeURIComponent(rootCursor)}`,
+          );
+          roots = [...roots, ...page.items.map(normalizeComment)].filter(
+            (item, index, items) =>
+              items.findIndex((candidate) => candidate.id === item.id) ===
+              index,
+          );
+          rootCursor = page.nextCursor;
+          root = roots.find((comment) => comment.id === rootId);
+        }
+        if (cancelled) return;
+        if (!root) {
+          setToast('相关评论已删除');
+          return;
+        }
+        let target =
+          targetId === root.id
+            ? root
+            : root.replies.find((item) => item.id === targetId);
+        let replyCursor = root.repliesNextCursor;
+        let replies = root.replies;
+        while (!target && replyCursor && !cancelled) {
+          const page = await apiRequest<CommentPageData>(
+            `/notes/${noteId}/comments/${root.id}/replies?limit=10&cursor=${encodeURIComponent(replyCursor)}`,
+          );
+          replies = [...replies, ...page.items.map(normalizeComment)].filter(
+            (item, index, items) =>
+              items.findIndex((candidate) => candidate.id === item.id) ===
+              index,
+          );
+          replyCursor = page.nextCursor;
+          target = replies.find((item) => item.id === targetId);
+        }
+        if (cancelled) return;
+        setComments(
+          roots.map((comment) =>
+            comment.id === root!.id
+              ? { ...comment, replies, repliesNextCursor: replyCursor }
+              : comment,
+          ),
+        );
+        setCommentsCursor(rootCursor);
+        if (!target || target.deleted) {
+          setToast('相关评论已删除');
+        }
+        if (target) {
+          setHighlightCommentId(target.id);
+          window.setTimeout(() => {
+            document
+              .querySelector<HTMLElement>(`[data-comment-id="${target!.id}"]`)
+              ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          }, 0);
+          window.setTimeout(() => setHighlightCommentId(null), 2200);
+        }
+      })
+      .catch(() => setToast('评论定位失败，请重试'));
+    return () => {
+      cancelled = true;
+    };
+  }, [comments, commentsCursor, commentsError, commentsLoading, noteId]);
+
+  useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(''), 2200);
     return () => window.clearTimeout(timer);
@@ -194,11 +367,28 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
     return lockDocumentScroll();
   }, [deleteTarget]);
 
-  const closeDeleteDialog = useCallback(() => {
+  const closeDeleteDialog = useCallback((focusCommentEntry = false) => {
+    deleteFocusRequestRef.current = {
+      focusCommentEntry,
+      returnTarget: deleteReturnFocusRef.current,
+    };
     setDeleteTarget(null);
     setDeleteError('');
-    window.setTimeout(() => deleteReturnFocusRef.current?.focus(), 0);
   }, []);
+
+  useEffect(() => {
+    if (deleteTarget || !deleteFocusRequestRef.current) return;
+    const request = deleteFocusRequestRef.current;
+    deleteFocusRequestRef.current = null;
+    const timer = window.setTimeout(() => {
+      if (!request.focusCommentEntry && request.returnTarget?.isConnected) {
+        request.returnTarget.focus();
+      } else {
+        commentEntryRef.current?.focus();
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [deleteTarget]);
 
   useEffect(() => {
     if (!deleteTarget) return;
@@ -209,13 +399,61 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
           ?.focus(),
       0,
     );
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      closeDeleteDialog();
+    const dialog = deleteDialogRef.current;
+    const focusDialogControl = (last = false) => {
+      const controls = dialog
+        ? Array.from(
+            dialog.querySelectorAll<HTMLElement>(
+              'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
+          )
+        : [];
+      const target = last ? controls.at(-1) : controls[0];
+      (target ?? dialog)?.focus();
     };
-    document.addEventListener('keydown', closeOnEscape);
-    return () => document.removeEventListener('keydown', closeOnEscape);
+    const keepDialogFocus = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeDeleteDialog();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const controls = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      const first = controls[0];
+      const last = controls.at(-1);
+      const active = document.activeElement;
+      if (!first || !last) {
+        event.preventDefault();
+        dialog.focus();
+      } else if (
+        event.shiftKey &&
+        (active === first || !dialog.contains(active))
+      ) {
+        event.preventDefault();
+        last.focus();
+      } else if (
+        !event.shiftKey &&
+        (active === last || !dialog.contains(active))
+      ) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    const containFocus = (event: FocusEvent) => {
+      if (dialog && !dialog.contains(event.target as Node)) {
+        focusDialogControl();
+      }
+    };
+    document.addEventListener('keydown', keepDialogFocus);
+    document.addEventListener('focusin', containFocus);
+    return () => {
+      document.removeEventListener('keydown', keepDialogFocus);
+      document.removeEventListener('focusin', containFocus);
+    };
   }, [closeDeleteDialog, deleteTarget]);
 
   const requestAuthentication = (resume?: () => Promise<void>) => {
@@ -355,7 +593,9 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
         const known = new Set(current.map((comment) => comment.id));
         return [
           ...current,
-          ...page.items.filter((comment) => !known.has(comment.id)),
+          ...page.items
+            .map(normalizeComment)
+            .filter((comment) => !known.has(comment.id)),
         ];
       });
       setCommentsCursor(page.nextCursor);
@@ -374,9 +614,116 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
     }
   };
 
+  const loadMoreReplies = async (rootCommentId: string) => {
+    const root = comments.find((comment) => comment.id === rootCommentId);
+    if (!root?.repliesNextCursor || replyLoadingIds.has(rootCommentId)) return;
+    setReplyLoadingIds((current) => new Set(current).add(rootCommentId));
+    setReplyErrorIds((current) => {
+      const next = new Set(current);
+      next.delete(rootCommentId);
+      return next;
+    });
+    try {
+      const page = await apiRequest<CommentPageData>(
+        `/notes/${noteId}/comments/${rootCommentId}/replies?limit=10&cursor=${encodeURIComponent(root.repliesNextCursor)}`,
+      );
+      setComments((current) =>
+        current.map((comment) =>
+          comment.id === rootCommentId
+            ? {
+                ...comment,
+                replies: [
+                  ...comment.replies,
+                  ...page.items.map(normalizeComment),
+                ].filter(
+                  (item, index, items) =>
+                    items.findIndex((candidate) => candidate.id === item.id) ===
+                    index,
+                ),
+                repliesNextCursor: page.nextCursor,
+                replyCount: page.total,
+              }
+            : comment,
+        ),
+      );
+    } catch {
+      setReplyErrorIds((current) => new Set(current).add(rootCommentId));
+    } finally {
+      setReplyLoadingIds((current) => {
+        const next = new Set(current);
+        next.delete(rootCommentId);
+        return next;
+      });
+    }
+  };
+
+  const openReplyInput = (comment: NoteCommentData) => {
+    setReplyTarget(comment);
+    setCommenting(true);
+    setCommentError('');
+    window.setTimeout(() => commentContentRef.current?.focus(), 0);
+    if (!note?.viewer.authenticated) requestAuthentication();
+  };
+
+  const setCommentLike = async (
+    comment: NoteCommentData,
+    target: boolean,
+    allowAuthentication = true,
+  ) => {
+    if (comment.deleted || commentLikeBusy.has(comment.id)) return;
+    const previous = comment;
+    setCommentLikeBusy((current) => new Set(current).add(comment.id));
+    setComments((current) =>
+      updateCommentTree(current, comment.id, (item) => ({
+        ...item,
+        liked: target,
+        likes: Math.max(0, item.likes + (target ? 1 : -1)),
+      })),
+    );
+    try {
+      const result = await apiRequest<{ active: boolean; count: number }>(
+        `/comments/${comment.id}/like`,
+        { method: target ? 'PUT' : 'DELETE' },
+      );
+      setComments((current) =>
+        updateCommentTree(current, comment.id, (item) => ({
+          ...item,
+          liked: result.active,
+          likes: result.count,
+        })),
+      );
+    } catch (error) {
+      setComments((current) =>
+        updateCommentTree(current, comment.id, () => previous),
+      );
+      if (
+        allowAuthentication &&
+        error instanceof ApiRequestError &&
+        error.status === 401
+      ) {
+        pendingActionRef.current = () => setCommentLike(comment, target, false);
+        setAuthOpen(true);
+      } else if (
+        error instanceof ApiRequestError &&
+        error.payload.code === 'SELF_COMMENT_LIKE_NOT_ALLOWED'
+      ) {
+        setToast('不能点赞自己的评论');
+      } else {
+        setToast('评论点赞失败，已恢复服务端状态');
+      }
+    } finally {
+      setCommentLikeBusy((current) => {
+        const next = new Set(current);
+        next.delete(comment.id);
+        return next;
+      });
+    }
+  };
+
   const openCommentInput = () => {
     authReturnFocusRef.current = commentEntryRef.current;
     setCommenting(true);
+    setReplyTarget(null);
     setCommentError('');
     if (!note?.viewer.authenticated) {
       requestAuthentication();
@@ -403,14 +750,40 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
       const result = await apiRequest<{
         comment: NoteCommentData;
         total: number;
-      }>(`/notes/${noteId}/comments`, {
-        method: 'POST',
-        body: JSON.stringify({ content }),
+      }>(
+        replyTarget
+          ? `/notes/${noteId}/comments/${replyTarget.id}/replies`
+          : `/notes/${noteId}/comments`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ content }),
+        },
+      );
+      setComments((current) => {
+        if (!replyTarget) {
+          return [
+            normalizeComment(result.comment),
+            ...current.filter((comment) => comment.id !== result.comment.id),
+          ];
+        }
+        const rootId = replyTarget.rootCommentId ?? replyTarget.id;
+        return current.map((comment) =>
+          comment.id === rootId
+            ? {
+                ...comment,
+                replies: [
+                  ...comment.replies,
+                  normalizeComment(result.comment),
+                ].filter(
+                  (item, index, items) =>
+                    items.findIndex((candidate) => candidate.id === item.id) ===
+                    index,
+                ),
+                replyCount: comment.replyCount + 1,
+              }
+            : comment,
+        );
       });
-      setComments((current) => [
-        result.comment,
-        ...current.filter((comment) => comment.id !== result.comment.id),
-      ]);
       setNote((current) =>
         current
           ? {
@@ -424,16 +797,22 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
       );
       setCommentDraft('');
       setCommenting(false);
-      setToast('评论发布成功');
+      setReplyTarget(null);
+      setToast(replyTarget ? '回复发布成功' : '评论发布成功');
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 401) {
         authReturnFocusRef.current = commentContentRef.current;
         requestAuthentication();
       } else if (
         error instanceof ApiRequestError &&
-        error.payload.code === 'COMMENT_INVALID'
+        (error.payload.code === 'COMMENT_INVALID' ||
+          error.payload.code === 'COMMENT_REPLY_TARGET_DELETED')
       ) {
-        setCommentError('评论需为1～500个字符');
+        setCommentError(
+          error.payload.code === 'COMMENT_REPLY_TARGET_DELETED'
+            ? '该评论已删除，无法回复'
+            : '评论需为1～500个字符',
+        );
       } else {
         setCommentError('评论发布失败，内容已保留，请重试');
       }
@@ -447,12 +826,27 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
     setDeletingComment(true);
     setDeleteError('');
     try {
-      const result = await apiRequest<{ deleted: true; total: number }>(
-        `/notes/${noteId}/comments/${deleteTarget.id}`,
-        { method: 'DELETE' },
-      );
+      const result = await apiRequest<{
+        deleted: true;
+        placeholder: boolean;
+        total: number;
+      }>(`/notes/${noteId}/comments/${deleteTarget.id}`, { method: 'DELETE' });
       setComments((current) =>
-        current.filter((comment) => comment.id !== deleteTarget.id),
+        updateCommentTree(current, deleteTarget.id, (comment) =>
+          result.placeholder
+            ? {
+                ...comment,
+                deleted: true,
+                content: null,
+                author: null,
+                canDelete: false,
+                canReply: false,
+                likes: 0,
+                liked: false,
+                canLike: false,
+              }
+            : null,
+        ),
       );
       setNote((current) =>
         current
@@ -465,7 +859,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
             }
           : current,
       );
-      closeDeleteDialog();
+      closeDeleteDialog(true);
       setToast('评论已删除');
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 401) {
@@ -475,7 +869,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
         setComments((current) =>
           current.filter((comment) => comment.id !== deleteTarget.id),
         );
-        closeDeleteDialog();
+        closeDeleteDialog(true);
         setCommentsReloadVersion((value) => value + 1);
       } else {
         setDeleteError('删除失败，请稍后重试');
@@ -534,6 +928,108 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
 
   const currentImage = note.images[imageIndex];
   const commentLength = Array.from(commentDraft).length;
+
+  const renderComment = (
+    comment: NoteCommentData,
+    rootCommentId: string,
+    reply = false,
+  ) => (
+    <li
+      key={comment.id}
+      className={`${reply ? 'comment-reply' : ''} ${highlightCommentId === comment.id ? 'comment-highlight' : ''}`}
+      data-comment-id={comment.id}
+    >
+      {comment.author ? (
+        <Avatar avatar={comment.author.avatar} className="comment-avatar" />
+      ) : (
+        <span
+          className="comment-avatar comment-avatar-deleted"
+          aria-hidden="true"
+        >
+          ×
+        </span>
+      )}
+      <div className="comment-body">
+        {comment.deleted ? (
+          <p className="deleted-comment">该评论已删除</p>
+        ) : (
+          <>
+            <div className="comment-heading">
+              <strong>{comment.author!.nickname}</strong>
+              {comment.isAuthor ? <span>作者</span> : null}
+              {comment.canDelete ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    deleteReturnFocusRef.current = event.currentTarget;
+                    setDeleteTarget(comment);
+                  }}
+                >
+                  删除
+                </button>
+              ) : null}
+            </div>
+            <p>
+              {comment.replyTo ? (
+                <span className="reply-target-label">
+                  {comment.replyTo.deleted
+                    ? '回复已删除的评论 '
+                    : `回复 @${comment.replyTo.nickname} `}
+                </span>
+              ) : null}
+              {comment.content}
+            </p>
+            <div className="comment-meta-actions">
+              <time dateTime={comment.createdAt}>
+                {formatNoteTime(comment.createdAt)}
+              </time>
+              <button type="button" onClick={() => openReplyInput(comment)}>
+                回复
+              </button>
+              <button
+                type="button"
+                className={comment.liked ? 'selected' : ''}
+                disabled={commentLikeBusy.has(comment.id) || !comment.canLike}
+                aria-pressed={comment.liked}
+                aria-label={
+                  comment.canLike
+                    ? `${comment.liked ? '取消点赞' : '点赞评论'}，当前 ${comment.likes}`
+                    : `自己的评论不可点赞，当前 ${comment.likes}`
+                }
+                onClick={() => void setCommentLike(comment, !comment.liked)}
+              >
+                <Icon name="heart" size={15} />
+                <span>{comment.likes}</span>
+              </button>
+            </div>
+          </>
+        )}
+        {!reply && comment.replies.length > 0 ? (
+          <ul className="comment-replies">
+            {comment.replies.map((item) =>
+              renderComment(item, rootCommentId, true),
+            )}
+          </ul>
+        ) : null}
+        {!reply && comment.repliesNextCursor ? (
+          <div className="reply-pagination">
+            {replyErrorIds.has(rootCommentId) ? (
+              <span role="alert">加载回复失败，已保留现有内容</span>
+            ) : null}
+            <button
+              type="button"
+              disabled={replyLoadingIds.has(rootCommentId)}
+              onClick={() => void loadMoreReplies(rootCommentId)}
+            >
+              {replyLoadingIds.has(rootCommentId)
+                ? '加载中…'
+                : `展开更多回复（共 ${comment.replyCount} 条）`}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </li>
+  );
 
   return (
     <main className="detail-page">
@@ -655,9 +1151,18 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
                   </span>
                 )
               ) : null}
-              <time dateTime={note.createdAt}>
-                {formatNoteTime(note.createdAt)}
-              </time>
+              <span className="detail-meta-row">
+                <time dateTime={note.createdAt}>
+                  {formatNoteTime(note.createdAt)}
+                </time>
+                <span
+                  className="detail-view-count"
+                  aria-label={`浏览量 ${note.interactions.views}`}
+                >
+                  <Icon name="eye" size={15} />
+                  {note.interactions.views} 次浏览
+                </span>
+              </span>
             </div>
 
             <section className="comment-section" aria-label="评论区">
@@ -685,36 +1190,9 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
                 </div>
               ) : (
                 <ul className="comment-list">
-                  {comments.map((comment) => (
-                    <li key={comment.id}>
-                      <Avatar
-                        avatar={comment.author.avatar}
-                        className="comment-avatar"
-                      />
-                      <div className="comment-body">
-                        <div className="comment-heading">
-                          <strong>{comment.author.nickname}</strong>
-                          {comment.isAuthor ? <span>作者</span> : null}
-                          {comment.canDelete ? (
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                deleteReturnFocusRef.current =
-                                  event.currentTarget;
-                                setDeleteTarget(comment);
-                              }}
-                            >
-                              删除
-                            </button>
-                          ) : null}
-                        </div>
-                        <p>{comment.content}</p>
-                        <time dateTime={comment.createdAt}>
-                          {formatNoteTime(comment.createdAt)}
-                        </time>
-                      </div>
-                    </li>
-                  ))}
+                  {comments.map((comment) =>
+                    renderComment(comment, comment.id),
+                  )}
                 </ul>
               )}
               {!commentsLoading && !commentsError && commentsCursor ? (
@@ -741,7 +1219,11 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
           <div className="detail-action-area">
             {commenting ? (
               <form className="comment-composer" onSubmit={submitComment}>
-                <label htmlFor="comment-content">评论内容</label>
+                <label htmlFor="comment-content">
+                  {replyTarget?.author
+                    ? `回复 @${replyTarget.author.nickname}`
+                    : '评论内容'}
+                </label>
                 <textarea
                   ref={commentContentRef}
                   id="comment-content"
@@ -762,7 +1244,11 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
                     type="button"
                     disabled={commentSubmitting}
                     onClick={() => {
-                      setCommenting(false);
+                      if (replyTarget) {
+                        setReplyTarget(null);
+                      } else {
+                        setCommenting(false);
+                      }
                       setCommentError('');
                       window.setTimeout(
                         () => commentEntryRef.current?.focus(),
@@ -770,7 +1256,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
                       );
                     }}
                   >
-                    取消
+                    {replyTarget ? '取消回复' : '取消'}
                   </button>
                   <button
                     type="submit"
@@ -884,6 +1370,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
             aria-modal="true"
             aria-labelledby="delete-comment-title"
             aria-describedby="delete-comment-description"
+            tabIndex={-1}
           >
             <h2 id="delete-comment-title">删除评论</h2>
             <p id="delete-comment-description">
@@ -894,7 +1381,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
               <button
                 type="button"
                 disabled={deletingComment}
-                onClick={closeDeleteDialog}
+                onClick={() => closeDeleteDialog()}
               >
                 取消
               </button>

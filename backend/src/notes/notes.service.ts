@@ -1,6 +1,8 @@
 import { Buffer } from 'node:buffer';
+import { createHmac, randomBytes } from 'node:crypto';
 
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 import { AuthService } from '../auth/auth.service.js';
 import { ChannelsService } from '../channels/channels.service.js';
@@ -14,6 +16,7 @@ import {
   type UploadedMemoryFile,
 } from '../media/media.types.js';
 import { RedisService } from '../redis/redis.service.js';
+import type { AppEnvironment } from '../config/environment.js';
 import { publicAvatar } from '../profile/profile-avatar.js';
 import type {
   NoteCard,
@@ -52,6 +55,8 @@ export class NotesService {
     private readonly imageValidator: ImageValidatorService,
     @Inject(MEDIA_STORAGE) private readonly media: MediaStorage,
     @Inject(RedisService) private readonly redis: RedisService,
+    @Inject(ConfigService)
+    private readonly config: ConfigService<AppEnvironment, true>,
   ) {}
 
   async publish(
@@ -225,6 +230,7 @@ export class NotesService {
         title: true,
         content: true,
         createdAt: true,
+        viewCount: true,
         author: {
           select: {
             id: true,
@@ -267,7 +273,7 @@ export class NotesService {
           select: {
             likes: true,
             favorites: true,
-            comments: true,
+            comments: { where: { deletedAt: null } },
           },
         },
       },
@@ -302,6 +308,7 @@ export class NotesService {
         likes: note._count.likes,
         favorites: note._count.favorites,
         comments: note._count.comments,
+        views: note.viewCount,
       },
       viewer: {
         authenticated: Boolean(viewer),
@@ -312,6 +319,77 @@ export class NotesService {
         canLike: viewer?.id !== note.author.id,
         canFollow: viewer?.id !== note.author.id,
       },
+    };
+  }
+
+  async recordView(
+    sessionId: string | undefined,
+    noteId: string,
+    visitorId: string | undefined,
+  ): Promise<{
+    counted: boolean;
+    viewCount: number;
+    visitorIdToSet: string | null;
+    secure: boolean;
+  }> {
+    if (!UUID_PATTERN.test(noteId)) throw this.notFound();
+    const viewer = await this.auth.currentUser(sessionId);
+    const generatedVisitor =
+      viewer || visitorId ? null : randomBytes(32).toString('base64url');
+    const subjectValue = viewer?.id ?? visitorId ?? generatedVisitor!;
+    const subjectType = viewer ? 'AUTHENTICATED' : 'ANONYMOUS';
+    const subjectHash = createHmac(
+      'sha256',
+      this.config.getOrThrow('AUTH_CODE_HASH_SECRET'),
+    )
+      .update(`${subjectType}:${subjectValue}`)
+      .digest('hex');
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - 30 * 60_000);
+
+    const result = await this.prisma.$transaction(async (transaction) => {
+      const note = await transaction.note.findUnique({
+        where: { id: noteId },
+        select: { authorId: true, viewCount: true },
+      });
+      if (!note) throw this.notFound();
+      if (viewer?.id === note.authorId) {
+        return { counted: false, viewCount: note.viewCount };
+      }
+      const changed = await transaction.$queryRaw<Array<{ noteId: string }>>`
+        INSERT INTO "note_view_subjects"
+          ("noteId", "subjectType", "subjectHash", "lastViewedAt")
+        VALUES (
+          ${noteId}::uuid,
+          CAST(${subjectType} AS "ViewSubjectType"),
+          ${subjectHash},
+          ${now}
+        )
+        ON CONFLICT ("noteId", "subjectType", "subjectHash")
+        DO UPDATE SET "lastViewedAt" = EXCLUDED."lastViewedAt"
+        WHERE "note_view_subjects"."lastViewedAt" <= ${cutoff}
+        RETURNING "noteId"
+      `;
+      if (changed.length === 0) {
+        const current = await transaction.note.findUnique({
+          where: { id: noteId },
+          select: { viewCount: true },
+        });
+        if (!current) throw this.notFound();
+        return { counted: false, viewCount: current.viewCount };
+      }
+      const updated = await transaction.note.update({
+        where: { id: noteId },
+        data: { viewCount: { increment: 1 } },
+        select: { viewCount: true },
+      });
+      return { counted: true, viewCount: updated.viewCount };
+    });
+
+    return {
+      ...result,
+      visitorIdToSet: generatedVisitor,
+      secure: this.config.getOrThrow('COOKIE_SECURE'),
     };
   }
 
@@ -357,6 +435,7 @@ export class NotesService {
         id: true,
         title: true,
         createdAt: true,
+        viewCount: true,
         author: {
           select: { id: true, nickname: true, avatarObjectKey: true },
         },
@@ -430,6 +509,7 @@ export class NotesService {
         select: {
           id: true,
           title: true,
+          viewCount: true,
           author: {
             select: { id: true, nickname: true, avatarObjectKey: true },
           },
@@ -498,6 +578,7 @@ export class NotesService {
       }>;
       likes?: Array<{ userId: string }>;
       _count: { likes: number };
+      viewCount: number;
     },
     viewerId?: string,
   ): NoteCard {
@@ -525,6 +606,7 @@ export class NotesService {
       likes: note._count.likes,
       liked: (note.likes?.length ?? 0) > 0,
       canLike: viewerId !== note.author.id,
+      views: note.viewCount,
     };
   }
 

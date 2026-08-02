@@ -200,6 +200,60 @@ describe('NotificationsPage', () => {
     );
   });
 
+  it('opens the original note with a deleted-comment fallback marker', async () => {
+    const notificationId = '00000000-0000-4000-8000-000000000013';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/auth/session')) {
+          return response({ authenticated: true, user: currentUser });
+        }
+        if (url.endsWith('/notifications/unread-count')) {
+          return response({ unreadCount: 1 });
+        }
+        if (url.includes('/notifications?tab=all')) {
+          return response({
+            items: [
+              item(notificationId, {
+                type: 'COMMENT_REPLIED',
+                action: '回复了你的评论',
+                comment: {
+                  id: null,
+                  rootCommentId: null,
+                  preview: null,
+                  deleted: true,
+                },
+              }),
+            ],
+            nextCursor: null,
+          });
+        }
+        if (url.endsWith(`/notifications/${notificationId}/read`)) {
+          return response({
+            id: notificationId,
+            readAt: '2026-07-29T12:10:00.000Z',
+            unreadCount: 0,
+          });
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      }) as unknown as typeof fetch,
+    );
+
+    render(<NotificationsPage />);
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /未读，互动用户回复了你的评论/,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(navigation.push).toHaveBeenCalledWith(
+        '/explore/00000000-0000-4000-8000-000000000003?commentDeleted=1',
+      ),
+    );
+  });
+
   it('restores URL tabs and supports tab keyboard navigation', async () => {
     navigation.query = 'tab=comments';
     vi.stubGlobal(

@@ -26,10 +26,18 @@ const pnpmCommand = pnpmCli
 const pnpmPrefix = pnpmCli ? [pnpmCli] : [];
 const playwrightArguments = process.argv.slice(2);
 
-const postgresPort = 55432;
-const redisPort = 56379;
-const frontendPort = 3100;
-const backendPort = 3101;
+function configuredPort(name, fallback) {
+  const value = Number(process.env[name] ?? fallback);
+  if (!Number.isInteger(value) || value < 1 || value > 65535) {
+    throw new Error(`${name} must be a valid TCP port.`);
+  }
+  return value;
+}
+
+const postgresPort = configuredPort('E2E_POSTGRES_PORT', 55432);
+const redisPort = configuredPort('E2E_REDIS_PORT', 56379);
+const frontendPort = configuredPort('E2E_FRONTEND_PORT', 3100);
+const backendPort = configuredPort('E2E_BACKEND_PORT', 3101);
 const databaseUser = 'littlebluebook_e2e';
 const databasePassword = 'littlebluebook-e2e-local';
 const databaseName = 'littlebluebook_e2e';
@@ -335,6 +343,24 @@ async function seedUsersAndSessions() {
       '织网资料蓝友',
       '0000000119',
     ],
+    [
+      '00000000-0000-4000-8000-000000000120',
+      'engagement-author@example.com',
+      '进阶互动作者',
+      '0000000120',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000121',
+      'engagement-commenter@example.com',
+      '进阶互动蓝友',
+      '0000000121',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000122',
+      'engagement-peer@example.com',
+      '私信蓝友',
+      '0000000122',
+    ],
   ];
   const values = users
     .map(
@@ -384,6 +410,9 @@ async function seedUsersAndSessions() {
   const profileSettingsChromiumUserId = users[16][0];
   const profileSettingsFirefoxUserId = users[17][0];
   const profileSettingsWebkitUserId = users[18][0];
+  const engagementAuthorUserId = users[19][0];
+  const engagementCommenterUserId = users[20][0];
+  const engagementPeerUserId = users[21][0];
   const sessions = [
     ['spec002-device-a-session', multiDeviceUserId],
     ['spec002-device-b-session', multiDeviceUserId],
@@ -404,6 +433,9 @@ async function seedUsersAndSessions() {
     ['spec010-chromium-session', profileSettingsChromiumUserId],
     ['spec010-firefox-session', profileSettingsFirefoxUserId],
     ['spec010-webkit-session', profileSettingsWebkitUserId],
+    ['spec011-author-session', engagementAuthorUserId],
+    ['spec011-commenter-session', engagementCommenterUserId],
+    ['spec011-peer-session', engagementPeerUserId],
   ];
   for (const [sessionId, userId] of sessions) {
     const key =
@@ -516,6 +548,28 @@ async function verifyLegacyMigrations() {
       'prisma',
       'migrations',
       '20260729000200_add_profile_settings',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const engagementSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260801000100_add_engagement_and_messaging',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const commentReplyChainSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260802000100_preserve_comment_reply_chains',
       'migration.sql',
     ),
     'utf8',
@@ -644,6 +698,22 @@ async function verifyLegacyMigrations() {
     'ON_ERROR_STOP=1',
     '-c',
     profileSettingsSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    engagementSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    commentReplyChainSql,
   );
   await psql(
     '-d',
@@ -783,6 +853,61 @@ async function verifyLegacyMigrations() {
         WHERE indexname = 'avatar_cleanup_nextAttemptAt_idx'
       ) THEN
         RAISE EXCEPTION 'SPEC-010 cleanup retry index missing';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM "notes"
+        WHERE "id" = '00000000-0000-4000-8000-000000000098'
+          AND "viewCount" = 0
+      ) OR NOT EXISTS (
+        SELECT 1 FROM "note_comments"
+        WHERE "id" = '00000000-0000-4000-8000-000000000096'
+          AND "rootCommentId" IS NULL
+          AND "replyToId" IS NULL
+          AND "replyToAuthorId" IS NULL
+          AND "deletedAt" IS NULL
+          AND "content" = '迁移前评论'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-011 legacy engagement backfill failed';
+      END IF;
+      IF (SELECT count(*) FROM "comment_likes") <> 0
+         OR (SELECT count(*) FROM "note_view_subjects") <> 0
+         OR (SELECT count(*) FROM "direct_conversations") <> 0
+         OR (SELECT count(*) FROM "direct_messages") <> 0 THEN
+        RAISE EXCEPTION 'SPEC-011 unexpectedly backfilled new records';
+      END IF;
+      IF (
+        SELECT count(*) FROM pg_indexes
+        WHERE indexname IN (
+          'note_comments_rootCommentId_createdAt_id_idx',
+          'comment_likes_commentId_idx',
+          'note_view_subjects_lastViewedAt_idx',
+          'direct_conversations_firstParticipantId_lastMessageAt_id_idx',
+          'direct_messages_conversationId_createdAt_id_idx'
+        )
+      ) <> 5 THEN
+        RAISE EXCEPTION 'SPEC-011 query indexes missing';
+      END IF;
+      IF (
+        SELECT count(*) FROM pg_constraint
+        WHERE conname IN (
+          'note_comments_reply_shape_check',
+          'notes_viewCount_nonnegative_check',
+          'note_view_subjects_hash_check',
+          'direct_conversations_participant_order_check',
+          'direct_messages_content_check'
+        )
+      ) <> 5 THEN
+        RAISE EXCEPTION 'SPEC-011 integrity constraints missing';
+      END IF;
+      IF (
+        SELECT count(*) FROM pg_constraint
+        WHERE conname IN (
+          'note_comments_rootCommentId_fkey',
+          'note_comments_replyToId_fkey'
+        )
+          AND confdeltype = 'r'
+      ) <> 2 THEN
+        RAISE EXCEPTION 'SPEC-011 structural reply foreign keys are not restrictive';
       END IF;
     END $$;`,
   );

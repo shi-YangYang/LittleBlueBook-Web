@@ -250,7 +250,7 @@ describe('InteractionsService', () => {
 
     await expect(
       service.deleteComment('session', noteId, commentId),
-    ).resolves.toEqual({ deleted: true, total: 1 });
+    ).resolves.toEqual({ deleted: true, placeholder: false, total: 1 });
 
     prisma.noteComment.findUnique.mockResolvedValue({
       id: commentId,
@@ -269,7 +269,7 @@ describe('InteractionsService', () => {
     });
     await expect(
       service.deleteComment('session', noteId, commentId),
-    ).resolves.toEqual({ deleted: true, total: 1 });
+    ).resolves.toEqual({ deleted: true, placeholder: false, total: 1 });
   });
 
   it('requires a valid session before every interaction write', async () => {

@@ -94,6 +94,14 @@ export function NoteCard({
           <Avatar avatar={note.author.avatar} className="author-avatar" />
           <span>{note.author.nickname}</span>
         </Link>
+        <span
+          className="note-views"
+          aria-label={`浏览量 ${note.views}`}
+          title={`浏览量 ${note.views}`}
+        >
+          <Icon name="eye" size={16} />
+          <span>{note.views}</span>
+        </span>
         <button
           className={`likes ${liked ? 'selected' : ''}`}
           type="button"

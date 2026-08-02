@@ -21,7 +21,11 @@ export function readCookie(request: Request, name: string): string | undefined {
 
     const key = pair.slice(0, separator).trim();
     if (key === name) {
-      return decodeURIComponent(pair.slice(separator + 1).trim());
+      try {
+        return decodeURIComponent(pair.slice(separator + 1).trim());
+      } catch {
+        return undefined;
+      }
     }
   }
 
@@ -63,6 +67,20 @@ export function setRegistrationCookie(
     REGISTRATION_COOKIE_NAME,
     value,
     cookieOptions(secure, REGISTRATION_TTL_SECONDS * 1000),
+  );
+}
+
+export const VIEW_VISITOR_COOKIE_NAME = 'lbb_view_visitor';
+
+export function setViewVisitorCookie(
+  response: Response,
+  value: string,
+  secure: boolean,
+): void {
+  response.cookie(
+    VIEW_VISITOR_COOKIE_NAME,
+    value,
+    cookieOptions(secure, 365 * 24 * 60 * 60 * 1000),
   );
 }
 

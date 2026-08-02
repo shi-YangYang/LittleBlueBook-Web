@@ -1,4 +1,5 @@
 import { HttpStatus } from '@nestjs/common';
+import type { ConfigService } from '@nestjs/config';
 
 import { ApiException } from '../common/api-exception.js';
 import type { AuthService } from '../auth/auth.service.js';
@@ -7,6 +8,7 @@ import type { PrismaService } from '../database/prisma.service.js';
 import type { ImageValidatorService } from '../media/image-validator.service.js';
 import type { MediaStorage } from '../media/media.types.js';
 import type { RedisService } from '../redis/redis.service.js';
+import type { AppEnvironment } from '../config/environment.js';
 import { NotesService } from './notes.service.js';
 
 const user = {
@@ -78,6 +80,13 @@ function dependencies() {
     publicUrl: jest.fn((key: string) => `https://media.example.test/${key}`),
   };
   const redis = { eval: jest.fn(async () => 1) };
+  const config = {
+    getOrThrow: jest.fn((key: string) =>
+      key === 'COOKIE_SECURE'
+        ? false
+        : 'unit-test-view-secret-at-least-32-characters',
+    ),
+  };
   const service = new NotesService(
     auth as unknown as AuthService,
     channels as unknown as ChannelsService,
@@ -85,6 +94,7 @@ function dependencies() {
     validator as unknown as ImageValidatorService,
     media as MediaStorage,
     redis as unknown as RedisService,
+    config as unknown as ConfigService<AppEnvironment, true>,
   );
   return { service, auth, channels, prisma, validator, media, redis };
 }

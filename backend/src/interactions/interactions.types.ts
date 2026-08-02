@@ -17,11 +17,25 @@ export type CommentAuthor = {
 
 export type NoteCommentData = {
   id: string;
-  content: string;
+  rootCommentId: string | null;
+  content: string | null;
   createdAt: string;
-  author: CommentAuthor;
+  deleted: boolean;
+  author: CommentAuthor | null;
+  replyTo: {
+    id: string;
+    nickname: string | null;
+    deleted: boolean;
+  } | null;
   isAuthor: boolean;
   canDelete: boolean;
+  canReply: boolean;
+  likes: number;
+  liked: boolean;
+  canLike: boolean;
+  replies: NoteCommentData[];
+  replyCount: number;
+  repliesNextCursor: string | null;
 };
 
 export type CommentPage = {
@@ -37,5 +51,6 @@ export type CommentMutationResult = {
 
 export type CommentDeletionResult = {
   deleted: true;
+  placeholder: boolean;
   total: number;
 };

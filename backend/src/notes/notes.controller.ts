@@ -9,6 +9,7 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
@@ -26,20 +27,30 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 
 import { SESSION_COOKIE_NAME } from '../auth/auth.constants.js';
 import { readCookie } from '../auth/cookies.js';
+import {
+  setViewVisitorCookie,
+  VIEW_VISITOR_COOKIE_NAME,
+} from '../auth/cookies.js';
 import type { UploadedMemoryFile } from '../media/media.types.js';
 import { ListNotesDto } from './dto/list-notes.dto.js';
 import {
   NoteDetailResponseDto,
   NotePageResponseDto,
+  NoteViewResponseDto,
   PublishNoteResponseDto,
 } from './dto/note-response.dto.js';
 import { PublishNoteDto } from './dto/publish-note.dto.js';
 import { NotesService } from './notes.service.js';
-import type { NoteDetail, NotePage, PublishResult } from './notes.types.js';
+import type {
+  NoteDetail,
+  NotePage,
+  NoteViewResult,
+  PublishResult,
+} from './notes.types.js';
 
 @ApiTags('notes')
 @Controller('notes')
@@ -240,6 +251,31 @@ export class NotesController {
         readCookie(request, SESSION_COOKIE_NAME),
         noteId,
       ),
+    };
+  }
+
+  @Post(':noteId/views')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Record one eligible note-detail view' })
+  @ApiOkResponse({
+    description: 'Authoritative view count and counted state',
+    type: NoteViewResponseDto,
+  })
+  async view(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('noteId') noteId: string,
+  ): Promise<{ data: NoteViewResult }> {
+    const result = await this.notes.recordView(
+      readCookie(request, SESSION_COOKIE_NAME),
+      noteId,
+      readCookie(request, VIEW_VISITOR_COOKIE_NAME),
+    );
+    if (result.visitorIdToSet) {
+      setViewVisitorCookie(response, result.visitorIdToSet, result.secure);
+    }
+    return {
+      data: { counted: result.counted, viewCount: result.viewCount },
     };
   }
 }

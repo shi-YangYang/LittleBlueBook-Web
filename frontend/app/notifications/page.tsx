@@ -309,7 +309,12 @@ function NotificationsPageContent() {
           setToast('相关用户已不存在');
         }
       } else if (notification.note) {
-        router.push(`/explore/${notification.note.id}`);
+        const commentQuery = notification.comment?.id
+          ? `?comment=${encodeURIComponent(notification.comment.id)}&root=${encodeURIComponent(notification.comment.rootCommentId ?? notification.comment.id)}`
+          : notification.comment?.deleted
+            ? '?commentDeleted=1'
+            : '';
+        router.push(`/explore/${notification.note.id}${commentQuery}`);
       } else {
         setToast('相关内容已不存在');
       }

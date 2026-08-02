@@ -43,6 +43,12 @@ class NotificationNoteDto {
 }
 
 class NotificationCommentDto {
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  id!: string | null;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  rootCommentId!: string | null;
+
   @ApiProperty({ type: String, nullable: true })
   preview!: string | null;
 
@@ -53,9 +59,22 @@ class NotificationCommentDto {
 class NotificationItemDto {
   @ApiProperty({
     type: String,
-    enum: ['NOTE_LIKED', 'NOTE_FAVORITED', 'NOTE_COMMENTED', 'USER_FOLLOWED'],
+    enum: [
+      'NOTE_LIKED',
+      'NOTE_FAVORITED',
+      'NOTE_COMMENTED',
+      'USER_FOLLOWED',
+      'COMMENT_REPLIED',
+      'COMMENT_LIKED',
+    ],
   })
-  type!: 'NOTE_LIKED' | 'NOTE_FAVORITED' | 'NOTE_COMMENTED' | 'USER_FOLLOWED';
+  type!:
+    | 'NOTE_LIKED'
+    | 'NOTE_FAVORITED'
+    | 'NOTE_COMMENTED'
+    | 'USER_FOLLOWED'
+    | 'COMMENT_REPLIED'
+    | 'COMMENT_LIKED';
 
   @ApiProperty({ type: String, format: 'uuid' })
   id!: string;

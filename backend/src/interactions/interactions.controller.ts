@@ -37,6 +37,7 @@ import {
   RelationshipResponseDto,
 } from './dto/interaction-response.dto.js';
 import { ListCommentsDto } from './dto/list-comments.dto.js';
+import { ListRepliesDto } from './dto/list-replies.dto.js';
 import { InteractionsService } from './interactions.service.js';
 import type {
   CommentDeletionResult,
@@ -236,6 +237,46 @@ export class NoteInteractionsController {
     };
   }
 
+  @Get('comments/:rootCommentId/replies')
+  @ApiOperation({ summary: 'List replies below one root comment oldest first' })
+  @ApiOkResponse({ type: CommentPageResponseDto })
+  async replies(
+    @Req() request: Request,
+    @Param('noteId') noteId: string,
+    @Param('rootCommentId') rootCommentId: string,
+    @Query() query: ListRepliesDto,
+  ): Promise<{ data: CommentPage }> {
+    return {
+      data: await this.interactions.replies(
+        readCookie(request, SESSION_COOKIE_NAME),
+        noteId,
+        rootCommentId,
+        query.cursor,
+        query.limit,
+      ),
+    };
+  }
+
+  @Post('comments/:targetCommentId/replies')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Reply to a comment within the same note and root' })
+  @ApiCreatedResponse({ type: CommentMutationResponseDto })
+  async reply(
+    @Req() request: Request,
+    @Param('noteId') noteId: string,
+    @Param('targetCommentId') targetCommentId: string,
+    @Body() input: CommentDto,
+  ): Promise<{ data: CommentMutationResult }> {
+    return {
+      data: await this.interactions.createReply(
+        readCookie(request, SESSION_COOKIE_NAME),
+        noteId,
+        targetCommentId,
+        input.content,
+      ),
+    };
+  }
+
   @Delete('comments/:commentId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete a comment when authorized' })
@@ -265,6 +306,49 @@ export class NoteInteractionsController {
         readCookie(request, SESSION_COOKIE_NAME),
         noteId,
         commentId,
+      ),
+    };
+  }
+}
+
+@ApiTags('comment interactions')
+@Controller('comments')
+export class CommentInteractionsController {
+  constructor(
+    @Inject(InteractionsService)
+    private readonly interactions: InteractionsService,
+  ) {}
+
+  @Put(':commentId/like')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Set a comment like to active' })
+  @ApiOkResponse({ type: RelationshipResponseDto })
+  async like(
+    @Req() request: Request,
+    @Param('commentId') commentId: string,
+  ): Promise<{ data: RelationshipResult }> {
+    return {
+      data: await this.interactions.setCommentLike(
+        readCookie(request, SESSION_COOKIE_NAME),
+        commentId,
+        true,
+      ),
+    };
+  }
+
+  @Delete(':commentId/like')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Set a comment like to inactive' })
+  @ApiOkResponse({ type: RelationshipResponseDto })
+  async unlike(
+    @Req() request: Request,
+    @Param('commentId') commentId: string,
+  ): Promise<{ data: RelationshipResult }> {
+    return {
+      data: await this.interactions.setCommentLike(
+        readCookie(request, SESSION_COOKIE_NAME),
+        commentId,
+        false,
       ),
     };
   }

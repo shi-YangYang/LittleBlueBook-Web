@@ -4,7 +4,13 @@ export type NotificationTab = 'all' | 'comments' | 'reactions' | 'follows';
 
 export type NotificationItem = {
   id: string;
-  type: 'NOTE_LIKED' | 'NOTE_FAVORITED' | 'NOTE_COMMENTED' | 'USER_FOLLOWED';
+  type:
+    | 'NOTE_LIKED'
+    | 'NOTE_FAVORITED'
+    | 'NOTE_COMMENTED'
+    | 'USER_FOLLOWED'
+    | 'COMMENT_REPLIED'
+    | 'COMMENT_LIKED';
   action: string;
   createdAt: string;
   readAt: string | null;
@@ -24,6 +30,8 @@ export type NotificationItem = {
     } | null;
   } | null;
   comment: {
+    id: string | null;
+    rootCommentId: string | null;
     preview: string | null;
     deleted: boolean;
   } | null;

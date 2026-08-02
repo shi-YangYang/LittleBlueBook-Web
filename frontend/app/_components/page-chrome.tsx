@@ -7,6 +7,7 @@ import type { AuthenticatedUser } from './auth-dialog';
 import { Avatar } from './avatar';
 import { Icon } from './icon';
 import { NotificationNavItem } from './notification-nav-item';
+import { MessageNavItem } from './message-nav-item';
 import { SearchTrigger } from './search-dialog';
 
 const menuItems = [
@@ -18,7 +19,7 @@ const menuItems = [
 
 type PageSidebarProps = {
   user: AuthenticatedUser | null;
-  active?: 'discover' | 'profile' | 'notifications';
+  active?: 'discover' | 'profile' | 'notifications' | 'messages';
   onLogin: (destination?: string) => void;
   onToast: (message: string) => void;
 };
@@ -86,6 +87,11 @@ export function PageSidebar({
         <NotificationNavItem
           authenticated={Boolean(user)}
           active={active === 'notifications'}
+          onLogin={onLogin}
+        />
+        <MessageNavItem
+          authenticated={Boolean(user)}
+          active={active === 'messages'}
           onLogin={onLogin}
         />
         {user ? (

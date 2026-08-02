@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -41,7 +42,7 @@ const note = {
     { url: 'https://media.example.test/one.png', width: 100, height: 120 },
     { url: 'https://media.example.test/two.webp', width: 90, height: 80 },
   ],
-  interactions: { likes: 0, favorites: 0, comments: 0 },
+  interactions: { likes: 0, favorites: 0, comments: 0, views: 0 },
   viewer: {
     authenticated: false,
     isAuthor: false,
@@ -93,11 +94,15 @@ describe('NoteDetailPage', () => {
     );
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: string | URL | Request) =>
-        String(input).includes('/comments')
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith(`/notes/${note.id}/views`)) {
+          return response({ counted: true, viewCount: 1 });
+        }
+        return url.includes('/comments')
           ? response(emptyComments)
-          : response(note),
-      ) as unknown as typeof fetch,
+          : response(note);
+      }) as unknown as typeof fetch,
     );
   });
 
@@ -127,6 +132,11 @@ describe('NoteDetailPage', () => {
     );
     expect(screen.getByLabelText('点赞，当前 0')).toBeVisible();
     expect(screen.getByLabelText('收藏，当前 0')).toBeVisible();
+    const viewCount = await screen.findByLabelText('浏览量 1');
+    expect(viewCount).toBeVisible();
+    const metadataRow = viewCount.closest('.detail-meta-row');
+    expect(metadataRow).not.toBeNull();
+    expect(metadataRow).toContainElement(screen.getByText('1小时前'));
     expect(screen.getByAltText('笔记图片 1')).toHaveAttribute(
       'src',
       note.images[0].url,
@@ -282,11 +292,118 @@ describe('NoteDetailPage', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: '删除' }).at(-1)!);
     expect(screen.getByRole('alertdialog', { name: '删除评论' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: '确认删除' }));
+    const confirmDelete = screen.getByRole('button', { name: '确认删除' });
+    const cancelDelete = screen.getByRole('button', { name: '取消' });
+    await waitFor(() => expect(confirmDelete).toHaveFocus());
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(cancelDelete).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(confirmDelete).toHaveFocus();
+    fireEvent.click(confirmDelete);
     await waitFor(() =>
       expect(screen.queryByText('已有评论')).not.toBeInTheDocument(),
     );
     expect(screen.getByText('共 1 条评论')).toBeVisible();
+  });
+
+  it('reports a rendered view and supports flattened reply and comment-like interactions', async () => {
+    const rootId = '00000000-0000-4000-8000-000000000020';
+    const replyId = '00000000-0000-4000-8000-000000000021';
+    const root = {
+      id: rootId,
+      rootCommentId: null,
+      content: '可以回复的一级评论',
+      createdAt: '2026-07-26T11:30:00.000Z',
+      deleted: false,
+      author: {
+        id: '00000000-0000-4000-8000-000000000022',
+        nickname: '评论用户',
+        avatar: { type: 'initial', value: '评' },
+      },
+      replyTo: null,
+      isAuthor: false,
+      canDelete: false,
+      canReply: true,
+      likes: 0,
+      liked: false,
+      canLike: true,
+      replies: [],
+      replyCount: 0,
+      repliesNextCursor: null,
+    };
+    const createdReply = {
+      ...root,
+      id: replyId,
+      rootCommentId: rootId,
+      content: '扁平回复正文',
+      replyTo: { id: rootId, nickname: '评论用户', deleted: false },
+      author: {
+        id: '00000000-0000-4000-8000-000000000023',
+        nickname: '当前用户',
+        avatar: { type: 'initial', value: '当' },
+      },
+      canDelete: true,
+      canLike: false,
+    };
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith(`/notes/${note.id}`)) {
+          return response({
+            ...note,
+            viewer: { ...note.viewer, authenticated: true },
+          });
+        }
+        if (url.endsWith(`/notes/${note.id}/views`)) {
+          expect(init?.method).toBe('POST');
+          return response({ counted: true, viewCount: 9 });
+        }
+        if (url.endsWith(`/notes/${note.id}/comments?limit=20`)) {
+          return response({ items: [root], nextCursor: null, total: 1 });
+        }
+        if (url.endsWith(`/comments/${rootId}/like`)) {
+          expect(init?.method).toBe('PUT');
+          return response({ active: true, count: 1 });
+        }
+        if (url.endsWith(`/notes/${note.id}/comments/${rootId}/replies`)) {
+          expect(init?.body).toBe(JSON.stringify({ content: '扁平回复正文' }));
+          return response({ comment: createdReply, total: 2 }, 201);
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+    render(<NoteDetailView noteId={note.id} />);
+
+    expect(await screen.findByLabelText('浏览量 9')).toBeVisible();
+    const rootItem = document.querySelector<HTMLElement>(
+      `[data-comment-id="${rootId}"]`,
+    );
+    expect(rootItem).not.toBeNull();
+    fireEvent.click(within(rootItem!).getByRole('button', { name: '回复' }));
+    fireEvent.change(screen.getByLabelText('回复 @评论用户'), {
+      target: { value: '扁平回复正文' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '取消回复' }));
+    expect(screen.getByLabelText('评论内容')).toHaveValue('扁平回复正文');
+    fireEvent.click(within(rootItem!).getByRole('button', { name: '回复' }));
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    expect(
+      await screen.findByText('扁平回复正文', {
+        selector: '.comment-reply .comment-body > p',
+      }),
+    ).toBeVisible();
+    expect(screen.getByText('回复 @评论用户')).toBeVisible();
+    expect(screen.getByText('共 2 条评论')).toBeVisible();
+
+    fireEvent.click(
+      within(rootItem!).getByRole('button', { name: '点赞评论，当前 0' }),
+    );
+    expect(
+      await within(rootItem!).findByRole('button', {
+        name: '取消点赞，当前 1',
+      }),
+    ).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('keeps a comment draft when an expired session opens authentication', async () => {
@@ -364,6 +481,16 @@ describe('NoteDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '返回上一页' }));
 
     expect(navigation.push).toHaveBeenCalledWith('/');
+  });
+
+  it('explains a hard-deleted notification target after the note loads', async () => {
+    window.history.replaceState({}, '', `/explore/${note.id}?commentDeleted=1`);
+    render(<NoteDetailView noteId={note.id} />);
+
+    await screen.findByRole('heading', { name: note.title });
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      '相关评论已删除',
+    );
   });
 
   it('shows a clear public 404 state with homepage recovery', async () => {

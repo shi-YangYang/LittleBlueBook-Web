@@ -43,6 +43,18 @@ export function Icon({ name, size = 24 }: { name: string; size?: number }) {
         <path d="M10 20h4" />
       </>
     ),
+    message: (
+      <>
+        <path d="M4 5.5h16v11H9l-5 3z" />
+        <path d="M8 10h8M8 13h5" />
+      </>
+    ),
+    eye: (
+      <>
+        <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+        <circle cx="12" cy="12" r="2.5" />
+      </>
+    ),
     more: <path d="M4 6h16M4 12h16M4 18h16" />,
     info: (
       <>

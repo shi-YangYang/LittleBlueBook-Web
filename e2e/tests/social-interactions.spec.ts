@@ -312,9 +312,29 @@ test('keeps comment and dialog keyboard behavior across browser engines', async 
   await expect(
     confirmation.getByRole('button', { name: '确认删除' }),
   ).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(
+    confirmation.getByRole('button', { name: '取消' }),
+  ).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(
+    confirmation.getByRole('button', { name: '确认删除' }),
+  ).toBeFocused();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await expect(confirmation).toHaveCount(0);
+  await expect(deleteButton).toBeFocused();
+
+  await deleteButton.click();
+  await expect(confirmation).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(confirmation).toHaveCount(0);
   await expect(deleteButton).toBeFocused();
+
+  await deleteButton.click();
+  await confirmation.getByRole('button', { name: '确认删除' }).click();
+  await expect(page.getByText('键盘删除确认')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '说点什么…' })).toBeFocused();
 
   await context.clearCookies();
   await page.reload();

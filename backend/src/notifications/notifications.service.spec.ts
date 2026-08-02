@@ -122,7 +122,7 @@ describe('NotificationsService', () => {
       expect.objectContaining({
         where: {
           recipientId: recipient.id,
-          type: { in: ['NOTE_COMMENTED'] },
+          type: { in: ['NOTE_COMMENTED', 'COMMENT_REPLIED'] },
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 2,

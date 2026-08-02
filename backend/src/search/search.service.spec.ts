@@ -212,6 +212,7 @@ describe('SearchService', () => {
         isSelf: false,
         following: true,
         canFollow: true,
+        canMessage: false,
       },
     });
     expect(JSON.stringify(result)).not.toContain('example.com');

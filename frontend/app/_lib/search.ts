@@ -41,6 +41,7 @@ export type PublicUserProfileData = {
     isSelf: boolean;
     following: boolean;
     canFollow: boolean;
+    canMessage: boolean;
   };
 };
 

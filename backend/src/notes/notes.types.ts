@@ -18,6 +18,7 @@ export type NoteCard = {
   likes: number;
   liked: boolean;
   canLike: boolean;
+  views: number;
 };
 
 export type NotePage = {
@@ -45,6 +46,7 @@ export type NoteDetail = {
     likes: number;
     favorites: number;
     comments: number;
+    views: number;
   };
   viewer: {
     authenticated: boolean;
@@ -60,4 +62,9 @@ export type NoteDetail = {
 export type PublishResult = {
   id: string;
   createdAt: string;
+};
+
+export type NoteViewResult = {
+  counted: boolean;
+  viewCount: number;
 };

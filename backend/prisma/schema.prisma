@@ -20,6 +20,13 @@ enum NotificationType {
   NOTE_FAVORITED
   NOTE_COMMENTED
   USER_FOLLOWED
+  COMMENT_REPLIED
+  COMMENT_LIKED
+}
+
+enum ViewSubjectType {
+  AUTHENTICATED
+  ANONYMOUS
 }
 
 enum AvatarCleanupStatus {
@@ -46,11 +53,16 @@ model User {
   noteLikes             NoteLike[]
   noteFavorites         NoteFavorite[]
   comments              NoteComment[]
+  commentLikes          CommentLike[]
+  replyTargets          NoteComment[]       @relation("ReplyTargetAuthor")
   following             UserFollow[]   @relation("UserFollowing")
   followers             UserFollow[]   @relation("UserFollowers")
   receivedNotifications Notification[] @relation("NotificationRecipient")
   actedNotifications    Notification[] @relation("NotificationActor")
   avatarCleanupRecords  AvatarCleanup[]
+  conversationsAsFirst  DirectConversation[] @relation("ConversationFirstParticipant")
+  conversationsAsSecond DirectConversation[] @relation("ConversationSecondParticipant")
+  sentDirectMessages    DirectMessage[]
 
   @@map("users")
 }
@@ -97,6 +109,7 @@ model Note {
   clientRequestId String         @db.Uuid
   createdAt       DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime       @updatedAt @db.Timestamptz(3)
+  viewCount       Int            @default(0)
   author          User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
   channel         Channel        @relation(fields: [channelId], references: [id], onDelete: Restrict)
   images          NoteImage[]
@@ -104,6 +117,7 @@ model Note {
   favorites       NoteFavorite[]
   comments        NoteComment[]
   notifications   Notification[]
+  viewSubjects    NoteViewSubject[]
 
   @@unique([authorId, clientRequestId])
   @@index([createdAt(sort: Desc), id(sort: Desc)])
@@ -139,18 +153,55 @@ model NoteFavorite {
 }
 
 model NoteComment {
-  id            String         @id @default(uuid()) @db.Uuid
-  noteId        String         @db.Uuid
-  authorId      String         @db.Uuid
-  content       String         @db.VarChar(500)
-  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
-  note          Note           @relation(fields: [noteId], references: [id], onDelete: Cascade)
-  author        User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  notifications Notification[]
+  id              String         @id @default(uuid()) @db.Uuid
+  noteId          String         @db.Uuid
+  authorId        String         @db.Uuid
+  rootCommentId   String?        @db.Uuid
+  replyToId       String?        @db.Uuid
+  replyToAuthorId String?        @db.Uuid
+  content         String         @db.VarChar(500)
+  deletedAt       DateTime?      @db.Timestamptz(3)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
+  note            Note           @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  author          User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  rootComment     NoteComment?   @relation("CommentRoot", fields: [rootCommentId], references: [id], onDelete: Restrict)
+  replies         NoteComment[]  @relation("CommentRoot")
+  replyTo         NoteComment?   @relation("CommentTarget", fields: [replyToId], references: [id], onDelete: Restrict)
+  referencedBy    NoteComment[]  @relation("CommentTarget")
+  replyToAuthor   User?          @relation("ReplyTargetAuthor", fields: [replyToAuthorId], references: [id], onDelete: Cascade)
+  likes           CommentLike[]
+  notifications   Notification[]
 
   @@index([noteId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([rootCommentId, createdAt(sort: Asc), id(sort: Asc)])
+  @@index([replyToId])
   @@index([authorId])
   @@map("note_comments")
+}
+
+model CommentLike {
+  userId    String      @db.Uuid
+  commentId String      @db.Uuid
+  createdAt DateTime    @default(now()) @db.Timestamptz(3)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment   NoteComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([userId, commentId])
+  @@index([commentId])
+  @@index([userId, createdAt(sort: Desc), commentId(sort: Desc)])
+  @@map("comment_likes")
+}
+
+model NoteViewSubject {
+  noteId       String          @db.Uuid
+  subjectType  ViewSubjectType
+  subjectHash  String          @db.VarChar(64)
+  lastViewedAt DateTime        @db.Timestamptz(3)
+  note         Note            @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, subjectType, subjectHash])
+  @@index([lastViewedAt])
+  @@map("note_view_subjects")
 }
 
 model UserFollow {
@@ -199,4 +250,40 @@ model Notification {
   @@index([recipientId, type, createdAt(sort: Desc), id(sort: Desc)])
   @@index([recipientId, readAt])
   @@map("notifications")
+}
+
+model DirectConversation {
+  id                              String          @id @default(uuid()) @db.Uuid
+  firstParticipantId              String          @db.Uuid
+  secondParticipantId             String          @db.Uuid
+  firstParticipantReadMessageId   String?         @db.Uuid
+  firstParticipantReadAt          DateTime?       @db.Timestamptz(3)
+  secondParticipantReadMessageId  String?         @db.Uuid
+  secondParticipantReadAt         DateTime?       @db.Timestamptz(3)
+  lastMessageAt                   DateTime         @db.Timestamptz(3)
+  createdAt                       DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt                       DateTime         @updatedAt @db.Timestamptz(3)
+  firstParticipant                User             @relation("ConversationFirstParticipant", fields: [firstParticipantId], references: [id], onDelete: Restrict)
+  secondParticipant               User             @relation("ConversationSecondParticipant", fields: [secondParticipantId], references: [id], onDelete: Restrict)
+  messages                        DirectMessage[]
+
+  @@unique([firstParticipantId, secondParticipantId])
+  @@index([firstParticipantId, lastMessageAt(sort: Desc), id(sort: Desc)])
+  @@index([secondParticipantId, lastMessageAt(sort: Desc), id(sort: Desc)])
+  @@map("direct_conversations")
+}
+
+model DirectMessage {
+  id              String             @id @default(uuid()) @db.Uuid
+  conversationId  String             @db.Uuid
+  senderId        String             @db.Uuid
+  content         String             @db.VarChar(1000)
+  clientRequestId String             @db.VarChar(100)
+  createdAt       DateTime           @default(now()) @db.Timestamptz(3)
+  conversation    DirectConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  sender          User               @relation(fields: [senderId], references: [id], onDelete: Restrict)
+
+  @@unique([senderId, clientRequestId])
+  @@index([conversationId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("direct_messages")
 }

@@ -264,7 +264,9 @@ test('delivers, paginates, reads and navigates transactional interaction notific
   await notificationRow.focus();
   await expect(notificationRow).toBeFocused();
   await notificationRow.press('Enter');
-  await expect(page).toHaveURL(new RegExp(`/explore/${noteId}$`));
+  await expect(page).toHaveURL(
+    new RegExp(`/explore/${noteId}\\?commentDeleted=1$`),
+  );
 
   await page.goto('/notifications');
   await page.getByRole('button', { name: '一键已读' }).click();
@@ -339,6 +341,8 @@ test('keeps notification tabs, keyboard navigation, login recovery and scrolling
     data: { content: `${browserFamily} 通知跳转` },
   });
   expect(comment.status()).toBe(201);
+  const commentId = ((await comment.json()).data as { comment: { id: string } })
+    .comment.id;
 
   await addSession(context, identity.authorSession);
   await page.setViewportSize({ width: 960, height: 600 });
@@ -380,7 +384,9 @@ test('keeps notification tabs, keyboard navigation, login recovery and scrolling
   await notificationRow.focus();
   await expect(notificationRow).toBeFocused();
   await notificationRow.press('Enter');
-  await expect(page).toHaveURL(new RegExp(`/explore/${noteId}$`));
+  await expect(page).toHaveURL(
+    new RegExp(`/explore/${noteId}\\?comment=${commentId}&root=${commentId}$`),
+  );
 
   await context.clearCookies();
   await page.goto('/');

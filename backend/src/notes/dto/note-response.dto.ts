@@ -45,6 +45,9 @@ class NoteCardResponseDto {
 
   @ApiProperty({ type: Boolean })
   canLike!: boolean;
+
+  @ApiProperty({ type: Number, minimum: 0 })
+  views!: number;
 }
 
 class NotePageDto {
@@ -93,6 +96,9 @@ class NoteInteractionsResponseDto {
 
   @ApiProperty({ type: Number, minimum: 0 })
   comments!: number;
+
+  @ApiProperty({ type: Number, minimum: 0 })
+  views!: number;
 }
 
 class NoteViewerResponseDto {
@@ -150,4 +156,17 @@ class NoteDetailDto {
 export class NoteDetailResponseDto {
   @ApiProperty({ type: () => NoteDetailDto })
   data!: NoteDetailDto;
+}
+
+class NoteViewResultDto {
+  @ApiProperty({ type: Boolean })
+  counted!: boolean;
+
+  @ApiProperty({ type: Number, minimum: 0 })
+  viewCount!: number;
+}
+
+export class NoteViewResponseDto {
+  @ApiProperty({ type: () => NoteViewResultDto })
+  data!: NoteViewResultDto;
 }

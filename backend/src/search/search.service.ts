@@ -38,6 +38,7 @@ type NoteSearchRow = {
   height: number;
   likes: bigint | number;
   liked: boolean;
+  viewCount: number;
 };
 
 type UserSearchRow = {
@@ -146,6 +147,7 @@ export class SearchService {
           n."id",
           n."title",
           n."createdAt",
+          n."viewCount",
           u."id" AS "authorId",
           u."nickname",
           u."avatarObjectKey",
@@ -330,26 +332,43 @@ export class SearchService {
     });
     if (!user) throw this.userNotFound();
 
-    const [following, followers, receivedLikes, receivedFavorites, relation] =
-      await Promise.all([
-        this.prisma.userFollow.count({ where: { followerId: user.id } }),
-        this.prisma.userFollow.count({ where: { followedId: user.id } }),
-        this.prisma.noteLike.count({ where: { note: { authorId: user.id } } }),
-        this.prisma.noteFavorite.count({
-          where: { note: { authorId: user.id } },
-        }),
-        viewer && viewer.id !== user.id
-          ? this.prisma.userFollow.findUnique({
-              where: {
-                followerId_followedId: {
-                  followerId: viewer.id,
-                  followedId: user.id,
-                },
+    const [
+      following,
+      followers,
+      receivedLikes,
+      receivedFavorites,
+      relation,
+      reverseRelation,
+    ] = await Promise.all([
+      this.prisma.userFollow.count({ where: { followerId: user.id } }),
+      this.prisma.userFollow.count({ where: { followedId: user.id } }),
+      this.prisma.noteLike.count({ where: { note: { authorId: user.id } } }),
+      this.prisma.noteFavorite.count({
+        where: { note: { authorId: user.id } },
+      }),
+      viewer && viewer.id !== user.id
+        ? this.prisma.userFollow.findUnique({
+            where: {
+              followerId_followedId: {
+                followerId: viewer.id,
+                followedId: user.id,
               },
-              select: { followerId: true },
-            })
-          : null,
-      ]);
+            },
+            select: { followerId: true },
+          })
+        : null,
+      viewer && viewer.id !== user.id
+        ? this.prisma.userFollow.findUnique({
+            where: {
+              followerId_followedId: {
+                followerId: user.id,
+                followedId: viewer.id,
+              },
+            },
+            select: { followerId: true },
+          })
+        : null,
+    ]);
     const isSelf = viewer?.id === user.id;
     return {
       id: user.id,
@@ -369,6 +388,8 @@ export class SearchService {
         isSelf,
         following: Boolean(relation),
         canFollow: Boolean(viewer) && !isSelf,
+        canMessage:
+          Boolean(viewer) && !isSelf && Boolean(relation && reverseRelation),
       },
     };
   }
@@ -412,6 +433,7 @@ export class SearchService {
         id: true,
         title: true,
         createdAt: true,
+        viewCount: true,
         author: {
           select: { id: true, nickname: true, avatarObjectKey: true },
         },
@@ -447,6 +469,7 @@ export class SearchService {
             rank: 0,
             likes: note._count.likes,
             liked: (note.likes?.length ?? 0) > 0,
+            viewCount: note.viewCount,
           },
           viewer?.id,
         ),
@@ -487,6 +510,7 @@ export class SearchService {
       likes: Number(row.likes),
       liked: Boolean(row.liked),
       canLike: viewerId !== row.authorId,
+      views: row.viewCount,
     };
   }
 
