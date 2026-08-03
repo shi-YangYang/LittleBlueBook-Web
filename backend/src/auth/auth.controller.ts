@@ -37,6 +37,7 @@ import { RegisterDto } from './dto/register.dto.js';
 import { RequestCodeDto } from './dto/request-code.dto.js';
 import { VerifyCodeDto } from './dto/verify-code.dto.js';
 import type { PublicUser } from './auth.types.js';
+import type { LegalStatus } from './auth.types.js';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -191,5 +192,50 @@ export class AuthController {
     await this.auth.logout(readCookie(request, SESSION_COOKIE_NAME));
     clearSessionCookie(response, this.secureCookies);
     return { data: { success: true } };
+  }
+
+  @Get('legal-status')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Read authoritative legal document versions and current acceptance state',
+  })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        data: {
+          authenticated: true,
+          requiresAcceptance: false,
+          accountRestricted: false,
+          termsVersion: 'terms-2026-08-03-v1',
+          privacyVersion: 'privacy-2026-08-03-v1',
+          termsUrl: '/terms',
+          privacyUrl: '/privacy',
+        },
+      },
+    },
+  })
+  async legalStatus(@Req() request: Request): Promise<{ data: LegalStatus }> {
+    return {
+      data: await this.auth.legalStatus(
+        readCookie(request, SESSION_COOKIE_NAME),
+      ),
+    };
+  }
+
+  @Post('legal-acceptance')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Idempotently accept the current authoritative legal versions',
+  })
+  @ApiOkResponse({ description: 'The current legal acceptance state' })
+  async acceptLegalTerms(
+    @Req() request: Request,
+  ): Promise<{ data: LegalStatus }> {
+    return {
+      data: await this.auth.acceptCurrentLegalTerms(
+        readCookie(request, SESSION_COOKIE_NAME),
+      ),
+    };
   }
 }

@@ -551,6 +551,7 @@ describe('profile settings domain', () => {
   it.each([
     [input({ nickname: '<script>' }), 'PROFILE_VALIDATION_FAILED'],
     [input({ birthDate: '1900-01-01' }), 'PROFILE_VALIDATION_FAILED'],
+    [input({ birthDate: '2020-01-01' }), 'PROFILE_VALIDATION_FAILED'],
     [input({ birthDate: '', showAge: 'true' }), 'PROFILE_VALIDATION_FAILED'],
     [input({ bio: '字'.repeat(101) }), 'PROFILE_VALIDATION_FAILED'],
     [input({ avatarAction: 'delete', cropLeft: '0' }), 'AVATAR_INVALID'],
@@ -562,5 +563,35 @@ describe('profile settings domain', () => {
       response: expect.objectContaining({ code }),
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('accepts the fourteenth birthday and rejects the day before it', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-03T12:00:00.000Z'));
+    try {
+      const eligible = dependencies();
+      await expect(
+        eligible.service.updateSettings(
+          'session',
+          input({ birthDate: '2012-08-03' }),
+          undefined,
+        ),
+      ).resolves.toBeDefined();
+
+      const underage = dependencies();
+      await expect(
+        underage.service.updateSettings(
+          'session',
+          input({ birthDate: '2012-08-04' }),
+          undefined,
+        ),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'PROFILE_VALIDATION_FAILED',
+          details: { field: 'birthDate' },
+        }),
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

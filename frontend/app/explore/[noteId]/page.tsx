@@ -1038,11 +1038,8 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
         type="button"
         aria-label="返回上一页"
         onClick={() => {
-          if (consumeNoteDetailSource(noteId)) {
-            window.history.back();
-          } else {
-            router.push('/');
-          }
+          const sourcePath = consumeNoteDetailSource(noteId);
+          router.replace(sourcePath ?? '/');
         }}
       >
         <Icon name="chevronLeft" size={20} />

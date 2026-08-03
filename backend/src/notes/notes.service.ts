@@ -236,6 +236,7 @@ export class NotesService {
             id: true,
             nickname: true,
             avatarObjectKey: true,
+            ageRestrictedAt: true,
             followers: {
               where: { followerId: viewerId },
               take: 1,
@@ -278,7 +279,7 @@ export class NotesService {
         },
       },
     });
-    if (!note || note.images.length < 1) {
+    if (!note || note.author.ageRestrictedAt || note.images.length < 1) {
       throw this.notFound();
     }
 
@@ -425,6 +426,7 @@ export class NotesService {
       : {};
     const notes = await this.prisma.note.findMany({
       where: {
+        author: { ageRestrictedAt: null },
         ...(filter.authorId ? { authorId: filter.authorId } : {}),
         ...(filter.channelId ? { channelId: filter.channelId } : {}),
         ...cursorWhere,
@@ -531,16 +533,21 @@ export class NotesService {
         },
       },
     } satisfies Prisma.NoteLikeSelect;
+    const visibleWhere = {
+      userId,
+      ...cursorWhere,
+      note: { author: { ageRestrictedAt: null } },
+    };
     const relations =
       kind === 'likes'
         ? await this.prisma.noteLike.findMany({
-            where: { userId, ...cursorWhere },
+            where: visibleWhere,
             orderBy: [{ createdAt: 'desc' }, { noteId: 'desc' }],
             take: pageSize + 1,
             select,
           })
         : await this.prisma.noteFavorite.findMany({
-            where: { userId, ...cursorWhere },
+            where: visibleWhere,
             orderBy: [{ createdAt: 'desc' }, { noteId: 'desc' }],
             take: pageSize + 1,
             select,

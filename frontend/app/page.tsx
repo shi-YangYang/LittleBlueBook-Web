@@ -16,8 +16,10 @@ import { Avatar, type ProfileAvatar } from './_components/avatar';
 import { NoteFeed } from './_components/note-feed';
 import { NotificationNavItem } from './_components/notification-nav-item';
 import { SearchTrigger } from './_components/search-dialog';
+import { MoreMenu } from './_components/more-menu';
 import type { PublicChannel, PublicChannelList } from './_lib/channels';
 import { lockDocumentScroll } from './_lib/document-scroll-lock';
+import { requestLegalStatusRefresh } from './_lib/legal-status-events';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3001/api/v1';
@@ -118,6 +120,8 @@ function getErrorMessage(error: unknown): string {
       return '操作过于频繁，请稍后再试';
     case 'EMAIL_SEND_FAILED':
       return '验证码发送失败，请稍后重试';
+    case 'LEGAL_VERSION_CHANGED':
+      return '条款已更新，请重新确认并获取验证码';
     case 'NETWORK_ERROR':
       return '网络异常，请稍后重试';
     default:
@@ -478,6 +482,7 @@ export default function Home() {
         setUser(result.user);
         setModalOpen(false);
         setToast('登录成功');
+        requestLegalStatusRefresh();
         continueAfterAuthentication();
       } else {
         authStateVersionRef.current += 1;
@@ -518,6 +523,7 @@ export default function Home() {
       setNickname('');
       setAcceptedTerms(false);
       setStep('verify');
+      requestLegalStatusRefresh();
       continueAfterAuthentication();
     } catch (registerError) {
       const message = getErrorMessage(registerError);
@@ -603,14 +609,18 @@ export default function Home() {
         </nav>
 
         <nav className="secondary-nav" aria-label="其他功能">
-          <button type="button" onClick={showComingSoon}>
-            <Icon name="more" />
-            <span>更多</span>
-          </button>
-          <button type="button" onClick={showComingSoon}>
+          <MoreMenu
+            authenticated={Boolean(user)}
+            onToast={setToast}
+            onLoggedOut={() => {
+              setUser(null);
+              setToast('已退出登录');
+            }}
+          />
+          <Link href="/about">
             <Icon name="info" />
             <span>关于我们</span>
-          </button>
+          </Link>
         </nav>
       </aside>
 
@@ -831,8 +841,9 @@ export default function Home() {
                     {verifying ? '验证中…' : '登录/注册'}
                   </button>
 
-                  <label className="agreement">
+                  <div className="agreement">
                     <input
+                      id="home-legal-acceptance"
                       type="checkbox"
                       checked={acceptedTerms}
                       aria-label="同意用户协议与隐私政策"
@@ -842,15 +853,25 @@ export default function Home() {
                       }
                     />
                     <span>
-                      我已阅读并同意
-                      <button type="button" onClick={showComingSoon}>
+                      <label htmlFor="home-legal-acceptance">
+                        我已年满 14 周岁，并已阅读和同意
+                      </label>
+                      <a
+                        href="/terms"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
                         《用户协议》
-                      </button>
-                      <button type="button" onClick={showComingSoon}>
+                      </a>
+                      <a
+                        href="/privacy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
                         《隐私政策》
-                      </button>
+                      </a>
                     </span>
-                  </label>
+                  </div>
                   <p className="register-hint">未注册邮箱验证后将创建账号</p>
                 </form>
               ) : (

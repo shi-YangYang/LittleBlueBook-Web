@@ -26,6 +26,10 @@ class FakeRedis {
     this.values.delete(key);
   }
 
+  async get(key: string): Promise<string | null> {
+    return this.values.get(key) ?? null;
+  }
+
   async eval(
     _script: string,
     keys: string[],
@@ -63,8 +67,12 @@ class FakeRedis {
     if (!raw) {
       return [-1, 0];
     }
-    const record = JSON.parse(raw) as { hash: string; attempts: number };
-    if (record.hash === args[0]) {
+    const record = JSON.parse(raw) as {
+      hash: string;
+      attempts: number;
+      challengeId: string;
+    };
+    if (record.hash === args[0] && record.challengeId === args[2]) {
       this.values.delete(key);
       return [1, 0];
     }
@@ -125,7 +133,11 @@ describe('VerificationCodeService', () => {
 
     await expect(
       service.verifyCode('user@example.com', code),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({
+      challengeId: expect.any(String),
+      termsVersion: expect.any(String),
+      privacyVersion: expect.any(String),
+    });
     await expect(
       service.verifyCode('user@example.com', code),
     ).rejects.toMatchObject({
@@ -133,6 +145,22 @@ describe('VerificationCodeService', () => {
         code: 'VERIFICATION_CODE_EXPIRED',
       }),
     });
+  });
+
+  it('invalidates a challenge when an authoritative legal version changes', async () => {
+    const { service, redis, sent } = createService();
+    await service.requestCode('user@example.com', '127.0.0.1');
+    const [key, raw] = [...redis.values.entries()][0]!;
+    const stored = JSON.parse(raw) as Record<string, unknown>;
+    stored.termsVersion = 'superseded-terms-version';
+    redis.values.set(key, JSON.stringify(stored));
+
+    await expect(
+      service.verifyCode('user@example.com', sent[0]!.code),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'LEGAL_VERSION_CHANGED' }),
+    });
+    expect(redis.values.has(key)).toBe(false);
   });
 
   it('reports real remaining attempts and expires after five failures', async () => {

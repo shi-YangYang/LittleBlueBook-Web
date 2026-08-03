@@ -30,7 +30,9 @@ ENV PORT=3000
 WORKDIR /app
 
 RUN addgroup --system --gid 1001 nodejs \
-  && adduser --system --uid 1001 --ingroup nodejs nextjs
+  && adduser --system --uid 1001 --ingroup nodejs nextjs \
+  && mkdir -p /app/frontend/config \
+  && chown -R nextjs:nodejs /app/frontend/config
 
 COPY --from=builder --chown=nextjs:nodejs /workspace/frontend/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /workspace/frontend/.next/static ./frontend/.next/static

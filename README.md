@@ -93,6 +93,7 @@ PowerShell：
 Copy-Item .env.example .env
 Copy-Item frontend/.env.example frontend/.env.local
 Copy-Item backend/.env.example backend/.env
+Copy-Item frontend/config/legal.example.json frontend/config/legal.local.json
 ```
 
 macOS 或 Linux：
@@ -101,11 +102,21 @@ macOS 或 Linux：
 cp .env.example .env
 cp frontend/.env.example frontend/.env.local
 cp backend/.env.example backend/.env
+cp frontend/config/legal.example.json frontend/config/legal.local.json
 ```
 
 根据本地环境修改这些文件。邮箱验证码功能需要在 `backend/.env` 中配置 SMTP 发件账号和授权码。环境文件包含本地或真实凭据，不得提交到 Git。
 
 图文笔记图片默认保存在仓库根目录的 `.data/media/`。可以在 `backend/.env` 中通过 `MEDIA_ROOT` 修改持久化目录，并通过 `MEDIA_PUBLIC_BASE_URL` 配置浏览器访问图片的后端公开地址。数据库只保存随机对象 Key 和图片元数据。
+
+`frontend/config/legal.local.json` 保存法律页面展示的运营主体、联系邮箱、适用法律和生效日期。该文件已被 Git 和 Docker 构建上下文忽略，示例中的占位值必须替换后才能通过就绪检查。Docker 生产运行时应从服务器本地只读挂载，不得复制进镜像：
+
+```yaml
+services:
+  frontend:
+    volumes:
+      - ./private/legal.local.json:/app/frontend/config/legal.local.json:ro
+```
 
 ## 使用
 
@@ -288,7 +299,7 @@ compose.yaml    PostgreSQL 与 Redis 本地开发服务
 | 数据     | PostgreSQL 18、Prisma ORM 7、Redis 8                         |
 | 测试     | Vitest 4、Jest 30、Playwright 1                              |
 | 工程     | Node.js 24、pnpm 11 Workspace、Docker 与 Docker Compose      |
-| CI       | GitHub Actions `workflow_dispatch` 手动检查                   |
+| CI       | GitHub Actions `workflow_dispatch` 手动检查                  |
 | 部署目标 | GHCR + 单机 Docker Compose，发布和生产部署流水线尚待后续实施 |
 
 详细且具有约束力的技术说明见 [`constitution/tech-stack.md`](constitution/tech-stack.md)。

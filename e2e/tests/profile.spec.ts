@@ -232,7 +232,7 @@ test('keeps the root fitted after navigating from the homepage', async ({
 
   await addProfileSession(context);
   await page.goto('/');
-  const profileEntry = page.getByRole('link', { name: '我' });
+  const profileEntry = page.getByRole('link', { name: '我', exact: true });
   await expect(profileEntry).toBeVisible();
 
   const request = await deferredProfileRequest(page);
@@ -325,7 +325,10 @@ for (const viewportWidth of [1200, 1279]) {
     );
     try {
       await page.goto('/');
-      const profileEntry = page.getByRole('link', { name: '我' });
+      const profileEntry = page.getByRole('link', {
+        name: '我',
+        exact: true,
+      });
       await expect(profileEntry).toBeVisible();
       const request = await deferredProfileRequest(page);
       await profileEntry.click();

@@ -54,7 +54,9 @@ async function submitCode(page: Page): Promise<void> {
 }
 
 async function expectIdentity(page: Page): Promise<void> {
-  await expect(page.getByRole('link', { name: '我' })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: '我', exact: true }),
+  ).toBeVisible();
 }
 
 async function addSessionCookie(
@@ -99,7 +101,7 @@ test.describe('core passwordless flows in every browser engine', () => {
     await submitCode(page);
     await expectIdentity(page);
 
-    await page.getByRole('link', { name: '我' }).click();
+    await page.getByRole('link', { name: '我', exact: true }).click();
     await expect(page).toHaveURL(/\/profile$/);
     await expect(
       page.getByRole('heading', { name: user!.nickname }),
@@ -255,7 +257,7 @@ test.describe('registration recovery and multi-device sessions', () => {
       await expectIdentity(pageA);
       await expectIdentity(pageB);
 
-      await pageA.getByRole('link', { name: '我' }).click();
+      await pageA.getByRole('link', { name: '我', exact: true }).click();
       await expect(pageA).toHaveURL(/\/profile$/);
       await pageA.getByRole('button', { name: '个人主页设置' }).click();
       await pageA.getByRole('menuitem', { name: '退出登录' }).click();

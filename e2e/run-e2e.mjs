@@ -13,6 +13,11 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  createFrontendRuntime,
+  prepareFrontendRuntime,
+} from './frontend-runtime.mjs';
+
 const e2eRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(e2eRoot, '..');
 const composeProject = 'littlebluebook-spec004-e2e';
@@ -42,6 +47,8 @@ const databaseUser = 'littlebluebook_e2e';
 const databasePassword = 'littlebluebook-e2e-local';
 const databaseName = 'littlebluebook_e2e';
 const testCode = '246810';
+const termsVersion = 'terms-2026-08-03-v1';
+const privacyVersion = 'privacy-2026-08-03-v1';
 
 const databaseUrl =
   `postgresql://${databaseUser}:${databasePassword}` +
@@ -56,6 +63,13 @@ if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(taskDirectoryName)) {
 }
 const taskTestRoot = path.resolve(repositoryTestRoot, taskDirectoryName);
 const mediaRoot = path.resolve(taskTestRoot, 'media');
+const testFrontendRoot = path.resolve(taskTestRoot, 'frontend');
+const testLegalConfigPath = path.resolve(
+  taskTestRoot,
+  'test',
+  'legal-config',
+  'legal.local.json',
+);
 
 const composeEnvironment = {
   ...process.env,
@@ -86,6 +100,7 @@ const applicationEnvironment = {
   SMTP_FROM_NAME: '小蓝书',
   MAIL_TRANSPORT: 'memory',
   E2E_TEST_CODE: testCode,
+  E2E_LEGAL_CONFIG_PATH: testLegalConfigPath,
   MEDIA_ROOT: mediaRoot,
   MEDIA_PUBLIC_BASE_URL: `${apiUrl}/media`,
 };
@@ -94,7 +109,6 @@ let backendProcess;
 let frontendProcess;
 let infrastructureStarted = false;
 let cleaningUp = false;
-let frontendGeneratedFileSnapshots;
 
 function removeTaskTestDirectory() {
   if (
@@ -113,7 +127,10 @@ function removeTaskTestDirectory() {
       if (!target.startsWith(`${taskTestRoot}${path.sep}`)) {
         throw new Error('Refusing to clean an unexpected E2E test entry.');
       }
-      if (entry.isDirectory() && !entry.isSymbolicLink()) {
+      if (entry.isSymbolicLink()) {
+        if (entry.name === 'node_modules') rmdirSync(target);
+        else unlinkSync(target);
+      } else if (entry.isDirectory()) {
         removeEntries(target);
         rmdirSync(target);
       } else {
@@ -151,9 +168,9 @@ function run(command, args, options = {}) {
   });
 }
 
-function start(command, args, env) {
+function start(command, args, env, cwd = repoRoot) {
   return spawn(command, args, {
-    cwd: repoRoot,
+    cwd,
     env,
     stdio: 'inherit',
     windowsHide: true,
@@ -162,10 +179,6 @@ function start(command, args, env) {
 
 function runPnpm(args, options = {}) {
   return run(pnpmCommand, [...pnpmPrefix, ...args], options);
-}
-
-function startPnpm(args, env) {
-  return start(pnpmCommand, [...pnpmPrefix, ...args], env);
 }
 
 async function stop(child) {
@@ -361,6 +374,24 @@ async function seedUsersAndSessions() {
       '私信蓝友',
       '0000000122',
     ],
+    [
+      '00000000-0000-4000-8000-000000000123',
+      'legal-pending@example.com',
+      '条款待确认',
+      '0000000123',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000124',
+      'legal-concurrent@example.com',
+      '条款并发蓝友',
+      '0000000124',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000125',
+      'age-restricted@example.com',
+      '年龄受限蓝友',
+      '0000000125',
+    ],
   ];
   const values = users
     .map(
@@ -394,6 +425,61 @@ async function seedUsersAndSessions() {
     { env: composeEnvironment },
   );
 
+  await run(
+    dockerCommand,
+    composeArgs(
+      'exec',
+      '-T',
+      'postgres',
+      'psql',
+      '-U',
+      databaseUser,
+      '-d',
+      databaseName,
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-c',
+      `UPDATE "users" SET "ageRestrictedAt" = CURRENT_TIMESTAMP ` +
+        `WHERE "email" = 'age-restricted@example.com';`,
+    ),
+    { env: composeEnvironment, stdio: 'ignore' },
+  );
+
+  const acceptanceValues = users
+    .filter(
+      ([, email]) =>
+        email !== 'legal-pending@example.com' &&
+        email !== 'legal-concurrent@example.com',
+    )
+    .map(
+      ([userId], index) =>
+        `('10000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}', ` +
+        `'${userId}', '${termsVersion}', '${privacyVersion}', 'LOGIN', ` +
+        `'e2e-seed:${userId}', CURRENT_TIMESTAMP)`,
+    )
+    .join(', ');
+  await run(
+    dockerCommand,
+    composeArgs(
+      'exec',
+      '-T',
+      'postgres',
+      'psql',
+      '-U',
+      databaseUser,
+      '-d',
+      databaseName,
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-c',
+      'INSERT INTO "legal_acceptances" ' +
+        '("id", "userId", "termsVersion", "privacyVersion", "scene", ' +
+        '"evidenceKey", "acceptedAt") ' +
+        `VALUES ${acceptanceValues} ON CONFLICT ("evidenceKey") DO NOTHING;`,
+    ),
+    { env: composeEnvironment },
+  );
+
   const multiDeviceUserId = users[3][0];
   const contentUserId = users[4][0];
   const socialAuthorUserId = users[5][0];
@@ -413,6 +499,7 @@ async function seedUsersAndSessions() {
   const engagementAuthorUserId = users[19][0];
   const engagementCommenterUserId = users[20][0];
   const engagementPeerUserId = users[21][0];
+  const concurrentLegalUserId = users[23][0];
   const sessions = [
     ['spec002-device-a-session', multiDeviceUserId],
     ['spec002-device-b-session', multiDeviceUserId],
@@ -436,6 +523,9 @@ async function seedUsersAndSessions() {
     ['spec011-author-session', engagementAuthorUserId],
     ['spec011-commenter-session', engagementCommenterUserId],
     ['spec011-peer-session', engagementPeerUserId],
+    ['spec012-pending-session', users[22][0]],
+    ['spec012-concurrent-a-session', concurrentLegalUserId],
+    ['spec012-concurrent-b-session', concurrentLegalUserId],
   ];
   for (const [sessionId, userId] of sessions) {
     const key =
@@ -570,6 +660,28 @@ async function verifyLegacyMigrations() {
       'prisma',
       'migrations',
       '20260802000100_preserve_comment_reply_chains',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const legalAcceptanceSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260803000100_add_legal_acceptance',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const legalIdempotencySql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260803000200_enforce_legal_acceptance_idempotency',
       'migration.sql',
     ),
     'utf8',
@@ -714,6 +826,41 @@ async function verifyLegacyMigrations() {
     'ON_ERROR_STOP=1',
     '-c',
     commentReplyChainSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    legalAcceptanceSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    `INSERT INTO "legal_acceptances"
+      ("id", "userId", "termsVersion", "privacyVersion", "scene",
+       "evidenceKey", "acceptedAt")
+    VALUES
+      ('20000000-0000-4000-8000-000000000001',
+       '00000000-0000-4000-8000-000000000099',
+       '${termsVersion}', '${privacyVersion}', 'RECONFIRMATION',
+       'legacy-acceptance-early', '2026-08-01T00:00:00.000Z'),
+      ('20000000-0000-4000-8000-000000000002',
+       '00000000-0000-4000-8000-000000000099',
+       '${termsVersion}', '${privacyVersion}', 'RECONFIRMATION',
+       'legacy-acceptance-late', '2026-08-02T00:00:00.000Z');`,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    legalIdempotencySql,
   );
   await psql(
     '-d',
@@ -909,6 +1056,30 @@ async function verifyLegacyMigrations() {
       ) <> 2 THEN
         RAISE EXCEPTION 'SPEC-011 structural reply foreign keys are not restrictive';
       END IF;
+      IF (SELECT count(*) FROM "legal_acceptances") <> 1
+         OR NOT EXISTS (
+           SELECT 1 FROM "legal_acceptances"
+           WHERE "evidenceKey" = 'legacy-acceptance-early'
+             AND "scene" = 'RECONFIRMATION'
+         )
+         OR NOT EXISTS (
+           SELECT 1 FROM "users"
+           WHERE "email" = 'legacy@example.com'
+             AND "ageRestrictedAt" IS NULL
+         ) THEN
+        RAISE EXCEPTION 'SPEC-012 legacy legal migration changed existing data';
+      END IF;
+      IF (
+        SELECT count(*) FROM pg_indexes
+        WHERE indexname IN (
+          'legal_acceptances_evidenceKey_key',
+          'legal_acceptances_userId_termsVersion_privacyVersion_scene_key',
+          'legal_acceptances_userId_termsVersion_privacyVersion_idx',
+          'legal_acceptances_userId_acceptedAt_idx'
+        )
+      ) <> 4 THEN
+        RAISE EXCEPTION 'SPEC-012 legal acceptance indexes missing';
+      END IF;
     END $$;`,
   );
 }
@@ -957,6 +1128,75 @@ async function availableBrowserFamilies(systemChromiumPath) {
   return available;
 }
 
+async function verifyConcurrentLegalAcceptance() {
+  await run(
+    dockerCommand,
+    composeArgs(
+      'exec',
+      '-T',
+      'postgres',
+      'psql',
+      '-U',
+      databaseUser,
+      '-d',
+      databaseName,
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-c',
+      `DO $$ BEGIN
+        IF (
+          SELECT count(*) FROM "legal_acceptances"
+          WHERE "userId" = '00000000-0000-4000-8000-000000000124'
+            AND "termsVersion" = '${termsVersion}'
+            AND "privacyVersion" = '${privacyVersion}'
+            AND "scene" = 'RECONFIRMATION'
+        ) <> 1 THEN
+          RAISE EXCEPTION 'SPEC-012 concurrent legal acceptance was not idempotent';
+        END IF;
+      END $$;`,
+    ),
+    { env: composeEnvironment },
+  );
+}
+
+function concurrentLegalAcceptanceIsSelected() {
+  const selectedProjects = playwrightArguments
+    .filter((argument) => argument.startsWith('--project='))
+    .map((argument) => argument.slice('--project='.length));
+  if (
+    selectedProjects.length > 0 &&
+    !selectedProjects.includes('chromium-1440')
+  ) {
+    return false;
+  }
+
+  const selectedFiles = playwrightArguments.filter((argument) =>
+    argument.endsWith('.spec.ts'),
+  );
+  if (
+    selectedFiles.length > 0 &&
+    !selectedFiles.some((file) => file.endsWith('legal-terms-and-more.spec.ts'))
+  ) {
+    return false;
+  }
+
+  const grepIndex = playwrightArguments.indexOf('--grep');
+  const grepExpression =
+    grepIndex >= 0
+      ? playwrightArguments[grepIndex + 1]
+      : playwrightArguments
+          .find((argument) => argument.startsWith('--grep='))
+          ?.slice('--grep='.length);
+  if (!grepExpression) return true;
+  try {
+    return new RegExp(grepExpression).test(
+      'keeps reconfirmation idempotent across concurrent sessions',
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function cleanup() {
   if (cleaningUp) {
     return;
@@ -965,13 +1205,6 @@ async function cleanup() {
 
   await stop(frontendProcess);
   await stop(backendProcess);
-
-  if (frontendGeneratedFileSnapshots) {
-    for (const [filePath, contents] of frontendGeneratedFileSnapshots) {
-      writeFileSync(filePath, contents);
-    }
-    frontendGeneratedFileSnapshots = undefined;
-  }
 
   if (infrastructureStarted) {
     await run(
@@ -993,6 +1226,27 @@ async function main() {
     throw new Error('Unable to prepare a clean E2E test directory.');
   }
   mkdirSync(mediaRoot, { recursive: true });
+  mkdirSync(path.dirname(testLegalConfigPath), { recursive: true });
+  writeFileSync(
+    testLegalConfigPath,
+    JSON.stringify(
+      {
+        operator: { displayName: '小蓝书自动化测试主体' },
+        contact: { email: 'legal-e2e@example.test' },
+        legal: {
+          governingLaw: 'CN_MAINLAND',
+          effectiveDate: '2026-01-01',
+        },
+      },
+      null,
+      2,
+    ),
+    { encoding: 'utf8', flag: 'wx' },
+  );
+  prepareFrontendRuntime({
+    repositoryRoot: repoRoot,
+    runtimeRoot: testFrontendRoot,
+  });
 
   await run(dockerCommand, composeArgs('down', '--remove-orphans'), {
     env: composeEnvironment,
@@ -1026,27 +1280,22 @@ async function main() {
   );
   await waitFor(`http://127.0.0.1:${backendPort}/health/ready`);
 
-  frontendGeneratedFileSnapshots = [
-    path.join(repoRoot, 'frontend', 'next-env.d.ts'),
-    path.join(repoRoot, 'frontend', 'tsconfig.json'),
-  ].map((filePath) => [filePath, readFileSync(filePath)]);
-  frontendProcess = startPnpm(
-    [
-      '--filter',
-      'frontend',
-      'exec',
-      'next',
-      'dev',
-      '--hostname',
-      '127.0.0.1',
-      '--port',
-      String(frontendPort),
-    ],
-    {
+  const frontendRuntime = createFrontendRuntime({
+    repositoryRoot: repoRoot,
+    runtimeRoot: testFrontendRoot,
+    legalConfigPath: testLegalConfigPath,
+    port: frontendPort,
+    environment: {
       ...process.env,
+      BACKEND_URL: `http://127.0.0.1:${backendPort}`,
       NEXT_PUBLIC_API_URL: apiUrl,
-      NEXT_DIST_DIR: '.next-e2e',
     },
+  });
+  frontendProcess = start(
+    frontendRuntime.command,
+    frontendRuntime.args,
+    frontendRuntime.env,
+    frontendRuntime.cwd,
   );
   await waitFor(`${frontendUrl}/healthz`);
 
@@ -1082,6 +1331,9 @@ async function main() {
       },
     },
   );
+  if (concurrentLegalAcceptanceIsSelected()) {
+    await verifyConcurrentLegalAcceptance();
+  }
 }
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

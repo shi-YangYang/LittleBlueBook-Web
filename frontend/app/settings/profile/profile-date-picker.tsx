@@ -58,6 +58,10 @@ export function ProfileDatePicker({
   onChange,
 }: ProfileDatePickerProps) {
   const today = useMemo(() => startOfDay(new Date()), []);
+  const latestDate = useMemo(
+    () => new Date(today.getFullYear() - 14, today.getMonth(), today.getDate()),
+    [today],
+  );
   const oldestDate = useMemo(
     () =>
       new Date(
@@ -68,7 +72,8 @@ export function ProfileDatePicker({
     [today],
   );
   const selectedDate = parseDate(value);
-  const initialView = selectedDate ?? today;
+  const initialView =
+    selectedDate && selectedDate <= latestDate ? selectedDate : latestDate;
   const [open, setOpen] = useState(false);
   const [viewYear, setViewYear] = useState(initialView.getFullYear());
   const [viewMonth, setViewMonth] = useState(initialView.getMonth());
@@ -79,14 +84,15 @@ export function ProfileDatePicker({
   const years = useMemo(
     () =>
       Array.from(
-        { length: today.getFullYear() - oldestDate.getFullYear() + 1 },
-        (_, index) => today.getFullYear() - index,
+        { length: latestDate.getFullYear() - oldestDate.getFullYear() + 1 },
+        (_, index) => latestDate.getFullYear() - index,
       ),
-    [oldestDate, today],
+    [latestDate, oldestDate],
   );
 
   const openCalendar = () => {
-    const nextView = selectedDate ?? today;
+    const nextView =
+      selectedDate && selectedDate <= latestDate ? selectedDate : latestDate;
     setViewYear(nextView.getFullYear());
     setViewMonth(nextView.getMonth());
     setOpen(true);
@@ -135,7 +141,7 @@ export function ProfileDatePicker({
     new Date(viewYear, viewMonth, 0).getTime() < oldestDate.getTime();
   const nextDisabled =
     nextMonth.getTime() >
-    new Date(today.getFullYear(), today.getMonth(), 1).getTime();
+    new Date(latestDate.getFullYear(), latestDate.getMonth(), 1).getTime();
 
   const moveToMonth = (date: Date) => {
     setViewYear(date.getFullYear());
@@ -243,11 +249,11 @@ export function ProfileDatePicker({
             {Array.from({ length: daysInMonth }, (_, index) => {
               const day = index + 1;
               const date = new Date(viewYear, viewMonth, day);
-              const disabled = date < oldestDate || date > today;
+              const disabled = date < oldestDate || date > latestDate;
               const selected = selectedDate
                 ? sameDay(date, selectedDate)
                 : false;
-              const isToday = sameDay(date, today);
+              const isLatestEligibleDate = sameDay(date, latestDate);
               return (
                 <button
                   key={day}
@@ -256,7 +262,7 @@ export function ProfileDatePicker({
                   aria-label={`${viewYear}年${viewMonth + 1}月${day}日`}
                   aria-selected={selected}
                   data-selected={selected}
-                  data-today={isToday}
+                  data-today={isLatestEligibleDate}
                   disabled={disabled}
                   onClick={() => chooseDay(day)}
                 >

@@ -1,6 +1,7 @@
 import {
   createHash,
   createHmac,
+  randomUUID,
   randomInt,
   timingSafeEqual,
 } from 'node:crypto';
@@ -16,7 +17,12 @@ import {
   VERIFICATION_CODE_MAX_ATTEMPTS,
   VERIFICATION_CODE_TTL_SECONDS,
 } from './auth.constants.js';
+import {
+  CURRENT_PRIVACY_VERSION,
+  CURRENT_TERMS_VERSION,
+} from './legal.constants.js';
 import type { VerificationMailSender } from './mail/verification-mail.sender.js';
+import type { LegalChallenge } from './auth.types.js';
 
 const RESERVE_RATE_LIMIT_SCRIPT = `
 for index = 1, #KEYS do
@@ -55,7 +61,7 @@ if not raw then
 end
 
 local record = cjson.decode(raw)
-if record.hash == ARGV[1] then
+if record.hash == ARGV[1] and record.challengeId == ARGV[3] then
   redis.call('DEL', KEYS[1])
   return {1, 0}
 end
@@ -71,7 +77,7 @@ redis.call('SET', KEYS[1], cjson.encode(record), 'EX', ttl)
 return {0, tonumber(ARGV[2]) - record.attempts}
 `;
 
-type StoredCode = {
+type StoredCode = LegalChallenge & {
   hash: string;
   attempts: number;
 };
@@ -115,6 +121,9 @@ export class VerificationCodeService {
     const record: StoredCode = {
       hash: this.hash(email, code),
       attempts: 0,
+      challengeId: randomUUID(),
+      termsVersion: CURRENT_TERMS_VERSION,
+      privacyVersion: CURRENT_PRIVACY_VERSION,
     };
 
     try {
@@ -135,18 +144,40 @@ export class VerificationCodeService {
     }
   }
 
-  async verifyCode(email: string, code: string): Promise<void> {
+  async verifyCode(email: string, code: string): Promise<LegalChallenge> {
+    const codeKey = this.codeKey(email);
+    const record = this.parseStoredCode(await this.redis.get(codeKey));
+    if (!record) throw this.expired();
+    if (
+      record.termsVersion !== CURRENT_TERMS_VERSION ||
+      record.privacyVersion !== CURRENT_PRIVACY_VERSION
+    ) {
+      await this.redis.del(codeKey);
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        'LEGAL_VERSION_CHANGED',
+        '条款已更新，请重新确认并获取验证码',
+      );
+    }
     const result = await this.redis.eval(
       VERIFY_CODE_SCRIPT,
-      [this.codeKey(email)],
-      [this.hash(email, code), String(VERIFICATION_CODE_MAX_ATTEMPTS)],
+      [codeKey],
+      [
+        this.hash(email, code),
+        String(VERIFICATION_CODE_MAX_ATTEMPTS),
+        record.challengeId,
+      ],
     );
     const values = Array.isArray(result) ? result.map(Number) : [];
     const status = values[0];
     const remaining = values[1] ?? 0;
 
     if (status === 1) {
-      return;
+      return {
+        challengeId: record.challengeId,
+        termsVersion: record.termsVersion,
+        privacyVersion: record.privacyVersion,
+      };
     }
 
     if (status === 0 && remaining > 0) {
@@ -158,11 +189,34 @@ export class VerificationCodeService {
       );
     }
 
-    throw new ApiException(
+    throw this.expired();
+  }
+
+  private expired(): ApiException {
+    return new ApiException(
       HttpStatus.BAD_REQUEST,
       'VERIFICATION_CODE_EXPIRED',
       '验证码已失效，请重新获取',
     );
+  }
+
+  private parseStoredCode(value: string | null): StoredCode | null {
+    if (!value) return null;
+    try {
+      const parsed = JSON.parse(value) as Partial<StoredCode>;
+      if (
+        typeof parsed.hash !== 'string' ||
+        typeof parsed.attempts !== 'number' ||
+        typeof parsed.challengeId !== 'string' ||
+        typeof parsed.termsVersion !== 'string' ||
+        typeof parsed.privacyVersion !== 'string'
+      ) {
+        return null;
+      }
+      return parsed as StoredCode;
+    } catch {
+      return null;
+    }
   }
 
   private codeKey(email: string): string {

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 
 import type { AppEnvironment } from '../config/environment.js';
 import { DatabaseModule } from '../database/database.module.js';
@@ -15,6 +16,7 @@ import type { VerificationMailSender } from './mail/verification-mail.sender.js'
 import { RegistrationCredentialService } from './registration-credential.service.js';
 import { SessionService } from './session.service.js';
 import { VerificationCodeService } from './verification-code.service.js';
+import { LegalWriteGuard } from './legal-write.guard.js';
 
 @Module({
   imports: [DatabaseModule, RedisModule, MediaModule],
@@ -25,6 +27,10 @@ import { VerificationCodeService } from './verification-code.service.js';
     VerificationCodeService,
     RegistrationCredentialService,
     SessionService,
+    {
+      provide: APP_GUARD,
+      useClass: LegalWriteGuard,
+    },
     {
       provide: MAIL_SENDER,
       inject: [ConfigService],

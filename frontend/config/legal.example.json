@@ -1,0 +1,12 @@
+{
+  "operator": {
+    "displayName": "请填写运营主体"
+  },
+  "contact": {
+    "email": "legal@example.invalid"
+  },
+  "legal": {
+    "governingLaw": "CN_MAINLAND",
+    "effectiveDate": "YYYY-MM-DD"
+  }
+}

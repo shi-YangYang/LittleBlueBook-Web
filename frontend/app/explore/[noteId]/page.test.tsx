@@ -13,6 +13,7 @@ import { formatNoteTime, NoteDetailView } from './page';
 
 const navigation = vi.hoisted(() => ({
   push: vi.fn(),
+  replace: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -87,6 +88,7 @@ describe('formatNoteTime', () => {
 describe('NoteDetailPage', () => {
   beforeEach(() => {
     navigation.push.mockReset();
+    navigation.replace.mockReset();
     window.sessionStorage.clear();
     window.history.replaceState({}, '', '/');
     vi.spyOn(Date, 'now').mockReturnValue(
@@ -457,11 +459,10 @@ describe('NoteDetailPage', () => {
     expect(screen.getByLabelText('评论内容')).toHaveValue('需要保留的评论');
   });
 
-  it('returns through browser history for a recorded in-site source', async () => {
+  it('returns to the recorded in-site source without relying on browser history', async () => {
     window.history.replaceState({}, '', '/profile');
     markNoteDetailSource(note.id);
     window.history.pushState({}, '', `/explore/${note.id}`);
-    const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
 
     render(<NoteDetailView noteId={note.id} />);
     await screen.findByRole('heading', { name: note.title });
@@ -470,7 +471,7 @@ describe('NoteDetailPage', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: '返回上一页' }));
 
-    expect(back).toHaveBeenCalledOnce();
+    expect(navigation.replace).toHaveBeenCalledWith('/profile');
     expect(navigation.push).not.toHaveBeenCalled();
     expect(screen.queryByAltText('小蓝书')).toBeNull();
   });
@@ -480,7 +481,7 @@ describe('NoteDetailPage', () => {
     await screen.findByRole('heading', { name: note.title });
     fireEvent.click(screen.getByRole('button', { name: '返回上一页' }));
 
-    expect(navigation.push).toHaveBeenCalledWith('/');
+    expect(navigation.replace).toHaveBeenCalledWith('/');
   });
 
   it('explains a hard-deleted notification target after the note loads', async () => {

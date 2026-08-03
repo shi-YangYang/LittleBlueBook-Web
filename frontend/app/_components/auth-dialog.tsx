@@ -13,6 +13,7 @@ import {
 
 import { apiRequest, ApiRequestError } from '../_lib/api';
 import { lockDocumentScroll } from '../_lib/document-scroll-lock';
+import { requestLegalStatusRefresh } from '../_lib/legal-status-events';
 import { Icon } from './icon';
 import type { ProfileAvatar } from './avatar';
 
@@ -54,6 +55,8 @@ function authenticationError(error: unknown): string {
       return '操作过于频繁，请稍后再试';
     case 'EMAIL_SEND_FAILED':
       return '验证码发送失败，请稍后重试';
+    case 'LEGAL_VERSION_CHANGED':
+      return '条款已更新，请重新确认并获取验证码';
     case 'NETWORK_ERROR':
       return '网络异常，请稍后重试';
     default:
@@ -231,6 +234,7 @@ export function AuthDialog({
       });
       if (result.status === 'authenticated') {
         onToast?.('登录成功');
+        requestLegalStatusRefresh();
         onAuthenticated(result.user);
       } else {
         setStep('register');
@@ -266,6 +270,7 @@ export function AuthDialog({
       setAcceptedTerms(false);
       setStep('verify');
       onToast?.('注册成功');
+      requestLegalStatusRefresh();
       onAuthenticated(result.user);
     } catch (registerError) {
       setError(authenticationError(registerError));
@@ -389,8 +394,9 @@ export function AuthDialog({
               >
                 {verifying ? '验证中…' : '登录/注册'}
               </button>
-              <label className="agreement">
+              <div className="agreement">
                 <input
+                  id="auth-legal-acceptance"
                   type="checkbox"
                   checked={acceptedTerms}
                   aria-label="同意用户协议与隐私政策"
@@ -398,15 +404,17 @@ export function AuthDialog({
                   onChange={(event) => setAcceptedTerms(event.target.checked)}
                 />
                 <span>
-                  我已阅读并同意
-                  <button type="button" onClick={() => onToast?.('功能开发中')}>
+                  <label htmlFor="auth-legal-acceptance">
+                    我已年满 14 周岁，并已阅读和同意
+                  </label>
+                  <a href="/terms" target="_blank" rel="noopener noreferrer">
                     《用户协议》
-                  </button>
-                  <button type="button" onClick={() => onToast?.('功能开发中')}>
+                  </a>
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer">
                     《隐私政策》
-                  </button>
+                  </a>
                 </span>
-              </label>
+              </div>
               <p className="register-hint">未注册邮箱验证后将创建账号</p>
             </form>
           ) : (

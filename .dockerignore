@@ -14,6 +14,7 @@ test-results
 **/.env
 **/.env.*
 !**/.env.example
+frontend/config/legal.local.json
 .data
 data
 media

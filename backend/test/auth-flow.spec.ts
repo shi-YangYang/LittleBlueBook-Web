@@ -18,6 +18,7 @@ type TestUser = {
   createdAt: Date;
   updatedAt: Date;
   lastLoginAt: Date;
+  ageRestrictedAt: Date | null;
 };
 
 class TestRedis {
@@ -72,8 +73,12 @@ class TestRedis {
     if (!raw) {
       return [-1, 0];
     }
-    const record = JSON.parse(raw) as { hash: string; attempts: number };
-    if (record.hash === args[0]) {
+    const record = JSON.parse(raw) as {
+      hash: string;
+      attempts: number;
+      challengeId: string;
+    };
+    if (record.hash === args[0] && record.challengeId === args[2]) {
       this.values.delete(key);
       return [1, 0];
     }
@@ -89,6 +94,17 @@ class TestRedis {
 
 class TestPrisma {
   readonly users = new Map<string, TestUser>();
+  readonly acceptances = new Map<
+    string,
+    {
+      id: string;
+      userId: string;
+      termsVersion: string;
+      privacyVersion: string;
+      scene: string;
+      evidenceKey: string;
+    }
+  >();
   private sequence = 0;
 
   readonly user = {
@@ -148,12 +164,47 @@ class TestPrisma {
           createdAt: new Date(),
           updatedAt: new Date(),
           lastLoginAt: input.create.lastLoginAt,
+          ageRestrictedAt: null,
         };
         this.users.set(user.email, user);
         return user;
       },
     ),
   };
+
+  readonly legalAcceptance = {
+    createMany: jest.fn(
+      async (input: {
+        data: {
+          userId: string;
+          termsVersion: string;
+          privacyVersion: string;
+          scene: string;
+          evidenceKey: string;
+        };
+        skipDuplicates: boolean;
+      }) => {
+        const semanticKey = [
+          input.data.userId,
+          input.data.termsVersion,
+          input.data.privacyVersion,
+          input.data.scene,
+        ].join(':');
+        const existing = this.acceptances.get(semanticKey);
+        if (existing) return { count: 0 };
+        const created = {
+          id: `acceptance-${this.acceptances.size + 1}`,
+          ...input.data,
+        };
+        this.acceptances.set(semanticKey, created);
+        return { count: 1 };
+      },
+    ),
+  };
+
+  async $transaction<T>(callback: (database: TestPrisma) => Promise<T>) {
+    return callback(this);
+  }
 
   readonly userFollow = {
     count: jest.fn(async () => 0),
@@ -361,6 +412,7 @@ describe('passwordless authentication API', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       lastLoginAt: new Date(),
+      ageRestrictedAt: null,
     };
     prisma.users.set(existing.email, existing);
 

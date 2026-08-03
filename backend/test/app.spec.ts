@@ -54,6 +54,8 @@ describe('backend application', () => {
     expect(response.body.paths).toHaveProperty(
       '/api/v1/auth/registration/complete',
     );
+    expect(response.body.paths).toHaveProperty('/api/v1/auth/legal-status');
+    expect(response.body.paths).toHaveProperty('/api/v1/auth/legal-acceptance');
     expect(response.body.paths).toHaveProperty('/api/v1/profile/me');
     expect(response.body.paths).toHaveProperty('/api/v1/profile/me/settings');
     expect(response.body.paths).toHaveProperty('/api/v1/channels');

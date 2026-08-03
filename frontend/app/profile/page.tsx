@@ -17,6 +17,7 @@ import { Icon } from '../_components/icon';
 import { NoteFeed } from '../_components/note-feed';
 import { NotificationNavItem } from '../_components/notification-nav-item';
 import { SearchTrigger } from '../_components/search-dialog';
+import { MoreMenu } from '../_components/more-menu';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3001/api/v1';
@@ -213,6 +214,17 @@ export default function ProfilePage() {
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [settingsOpen]);
 
+  useEffect(() => {
+    const closeForOtherPopup = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== 'profile-settings') {
+        setSettingsOpen(false);
+      }
+    };
+    window.addEventListener('lbb:popup-open', closeForOtherPopup);
+    return () =>
+      window.removeEventListener('lbb:popup-open', closeForOtherPopup);
+  }, []);
+
   const showComingSoon = () => setToast('功能开发中');
 
   const handleLogout = async () => {
@@ -320,14 +332,18 @@ export default function ProfilePage() {
         </nav>
 
         <nav className="secondary-nav" aria-label="其他功能">
-          <button type="button" onClick={showComingSoon}>
-            <Icon name="more" />
-            <span>更多</span>
-          </button>
-          <button type="button" onClick={showComingSoon}>
+          <MoreMenu
+            authenticated={Boolean(profile)}
+            onToast={setToast}
+            onLoggedOut={() => {
+              setProfile(null);
+              router.replace('/');
+            }}
+          />
+          <Link href="/about">
             <Icon name="info" />
             <span>关于我们</span>
-          </button>
+          </Link>
         </nav>
       </aside>
 
@@ -398,7 +414,17 @@ export default function ProfilePage() {
                         aria-expanded={settingsOpen}
                         onClick={() => {
                           setLogoutError('');
-                          setSettingsOpen((open) => !open);
+                          setSettingsOpen((open) => {
+                            const next = !open;
+                            if (next) {
+                              window.dispatchEvent(
+                                new CustomEvent('lbb:popup-open', {
+                                  detail: 'profile-settings',
+                                }),
+                              );
+                            }
+                            return next;
+                          });
                         }}
                       >
                         <Icon name="settings" size={21} />

@@ -33,11 +33,15 @@ type CommentRecord = {
   content: string;
   deletedAt: Date | null;
   createdAt: Date;
-  author: { nickname: string; avatarObjectKey: string | null };
+  author: {
+    nickname: string;
+    avatarObjectKey: string | null;
+    ageRestrictedAt: Date | null;
+  };
   replyTo: {
     id: string;
     deletedAt: Date | null;
-    author: { nickname: string };
+    author: { nickname: string; ageRestrictedAt: Date | null };
   } | null;
   likes?: Array<{ userId: string }>;
   _count: { likes: number; replies: number };
@@ -559,12 +563,18 @@ export class InteractionsService {
       content: true,
       deletedAt: true,
       createdAt: true,
-      author: { select: { nickname: true, avatarObjectKey: true } },
+      author: {
+        select: {
+          nickname: true,
+          avatarObjectKey: true,
+          ageRestrictedAt: true,
+        },
+      },
       replyTo: {
         select: {
           id: true,
           deletedAt: true,
-          author: { select: { nickname: true } },
+          author: { select: { nickname: true, ageRestrictedAt: true } },
         },
       },
       likes: viewerLikes,
@@ -578,7 +588,9 @@ export class InteractionsService {
     viewerId: string | undefined,
     includePreview: boolean,
   ): NoteCommentData {
-    const deleted = Boolean(comment.deletedAt);
+    const deleted = Boolean(
+      comment.deletedAt || comment.author.ageRestrictedAt,
+    );
     const preview = includePreview ? (comment.replies ?? []).slice(0, 3) : [];
     const replyCount = comment._count?.replies ?? comment.replies?.length ?? 0;
     const lastPreview = preview.at(-1);
@@ -600,13 +612,19 @@ export class InteractionsService {
             ),
           },
       replyTo: comment.replyTo
-        ? {
-            id: comment.replyTo.id,
-            nickname: comment.replyTo.deletedAt
-              ? null
-              : comment.replyTo.author.nickname,
-            deleted: Boolean(comment.replyTo.deletedAt),
-          }
+        ? (() => {
+            const replyTargetUnavailable = Boolean(
+              comment.replyTo.deletedAt ||
+              comment.replyTo.author.ageRestrictedAt,
+            );
+            return {
+              id: comment.replyTo.id,
+              nickname: replyTargetUnavailable
+                ? null
+                : comment.replyTo.author.nickname,
+              deleted: replyTargetUnavailable,
+            };
+          })()
         : null,
       isAuthor: !deleted && comment.authorId === noteAuthorId,
       canDelete:

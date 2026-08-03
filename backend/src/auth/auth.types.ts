@@ -26,7 +26,23 @@ export type StoredSession = {
   createdAt: string;
 };
 
-export type StoredRegistration = {
+export type LegalChallenge = {
+  challengeId: string;
+  termsVersion: string;
+  privacyVersion: string;
+};
+
+export type StoredRegistration = LegalChallenge & {
   email: string;
   createdAt: string;
+};
+
+export type LegalStatus = {
+  authenticated: boolean;
+  requiresAcceptance: boolean;
+  accountRestricted: boolean;
+  termsVersion: string;
+  privacyVersion: string;
+  termsUrl: '/terms';
+  privacyUrl: '/privacy';
 };

@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import Home from './page';
+import { LEGAL_STATUS_REFRESH_EVENT } from './_lib/legal-status-events';
 
 const navigation = vi.hoisted(() => ({
   push: vi.fn(),
@@ -274,6 +275,8 @@ describe('Home', () => {
   });
 
   it('shows the fixed profile link after an existing user logs in', async () => {
+    const legalStatusRefresh = vi.fn();
+    window.addEventListener(LEGAL_STATUS_REFRESH_EVENT, legalStatusRefresh);
     const user = {
       id: 'user-1',
       email: 'user@example.com',
@@ -310,6 +313,8 @@ describe('Home', () => {
     expect(identity).toHaveTextContent('我');
     expect(identity).toHaveTextContent('蓝');
     expect(identity).toHaveAttribute('href', '/profile');
+    expect(legalStatusRefresh).toHaveBeenCalledTimes(1);
+    window.removeEventListener(LEGAL_STATUS_REFRESH_EVENT, legalStatusRefresh);
     expect(
       screen.queryByRole('menuitem', { name: '退出登录' }),
     ).not.toBeInTheDocument();
@@ -367,6 +372,8 @@ describe('Home', () => {
   });
 
   it('continues a new account through nickname validation and registration', async () => {
+    const legalStatusRefresh = vi.fn();
+    window.addEventListener(LEGAL_STATUS_REFRESH_EVENT, legalStatusRefresh);
     const user = {
       id: 'user-2',
       email: 'new@example.com',
@@ -422,6 +429,8 @@ describe('Home', () => {
         String(url).endsWith('/auth/registration/complete'),
       ),
     ).toBe(true);
+    expect(legalStatusRefresh).toHaveBeenCalledTimes(1);
+    window.removeEventListener(LEGAL_STATUS_REFRESH_EVENT, legalStatusRefresh);
   });
 
   it('keeps a completed registration when the initial guest session resolves late', async () => {
@@ -689,7 +698,7 @@ describe('Home', () => {
     expect(dialog).toBeInTheDocument();
 
     const close = screen.getByRole('button', { name: '关闭登录弹窗' });
-    const privacy = screen.getByRole('button', { name: '《隐私政策》' });
+    const privacy = screen.getByRole('link', { name: '《隐私政策》' });
     privacy.focus();
     fireEvent.keyDown(privacy, { key: 'Tab' });
     expect(close).toHaveFocus();

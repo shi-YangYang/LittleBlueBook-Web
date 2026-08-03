@@ -178,7 +178,8 @@ export class SearchService {
           ORDER BY ni."order" ASC
           LIMIT 1
         ) cover ON TRUE
-        WHERE ${Prisma.join(overallConditions, ' AND ')}
+        WHERE u."ageRestrictedAt" IS NULL
+          AND ${Prisma.join(overallConditions, ' AND ')}
       )
       SELECT * FROM ranked
       ${cursorCondition}
@@ -270,7 +271,8 @@ export class SearchService {
             )
           ) AS "following"
         FROM "users" u
-        WHERE ${Prisma.join(overallConditions, ' AND ')}
+        WHERE u."ageRestrictedAt" IS NULL
+          AND ${Prisma.join(overallConditions, ' AND ')}
       )
       SELECT * FROM ranked
       ${cursorCondition}
@@ -326,11 +328,12 @@ export class SearchService {
         gender: true,
         birthDate: true,
         showAge: true,
+        ageRestrictedAt: true,
         bio: true,
         avatarObjectKey: true,
       },
     });
-    if (!user) throw this.userNotFound();
+    if (!user || user.ageRestrictedAt) throw this.userNotFound();
 
     const [
       following,
@@ -405,10 +408,10 @@ export class SearchService {
       this.auth.currentUser(sessionId),
       this.prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true },
+        select: { id: true, ageRestrictedAt: true },
       }),
     ]);
-    if (!exists) throw this.userNotFound();
+    if (!exists || exists.ageRestrictedAt) throw this.userNotFound();
     const pageSize = this.pageSize(limitInput);
     const scope = `public-notes:${userId}`;
     const cursor = this.decodeNoteCursor(cursorInput, scope);

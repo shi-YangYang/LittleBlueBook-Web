@@ -97,7 +97,9 @@ function layoutNote(index: number) {
 
 async function openAuthenticatedPublishPage(page: Page): Promise<void> {
   await page.goto('/');
-  await expect(page.getByRole('link', { name: '我' })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: '我', exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: '发布', exact: true }).click();
   await expect(page).toHaveURL(`${frontendUrl}/publish`);
 }
@@ -263,7 +265,9 @@ test('publishes ordered images and shows the same real note everywhere', async (
   const title = `真实笔记-${testInfo.project.name}-${Date.now()}`;
 
   await page.goto('/');
-  await expect(page.getByRole('link', { name: '我' })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: '我', exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: '发布', exact: true }).click();
   await expect(page).toHaveURL(`${frontendUrl}/publish`);
 
@@ -384,16 +388,53 @@ test('returns from detail to its in-site source and falls back home for a direct
   expect(detailRects.overlaps).toBe(false);
   await backButton.click();
   await expect(page).toHaveURL(`${frontendUrl}/`);
+  await expect(
+    page.getByRole('link', { name: `查看笔记：${title}` }),
+  ).toBeVisible();
+  await page.close();
 
-  await page.goto('/profile');
-  await page.getByRole('link', { name: `查看笔记：${title}` }).click();
-  await expect(page).toHaveURL(`${frontendUrl}${detailPath}`);
-  await page.getByRole('button', { name: '返回上一页' }).click();
-  await expect(page).toHaveURL(`${frontendUrl}/profile`);
+  const profilePage = await context.newPage();
+  await profilePage.goto('/profile');
+  await profilePage.getByRole('link', { name: `查看笔记：${title}` }).click();
+  await expect(profilePage).toHaveURL(`${frontendUrl}${detailPath}`);
+  await profilePage.getByRole('button', { name: '返回上一页' }).click();
+  await expect(profilePage).toHaveURL(`${frontendUrl}/profile`);
+  await expect(
+    profilePage.getByRole('heading', { name: '内容蓝友' }),
+  ).toBeVisible();
+  await expect(
+    profilePage.getByRole('link', { name: `查看笔记：${title}` }),
+  ).toBeVisible();
+  await profilePage.close();
 
-  await page.goto(detailPath);
-  await page.getByRole('button', { name: '返回上一页' }).click();
-  await expect(page).toHaveURL(`${frontendUrl}/`);
+  const searchPath = `/search?keyword=${encodeURIComponent(title)}&type=note`;
+  const searchPage = await context.newPage();
+  await searchPage.goto(searchPath);
+  await searchPage.getByRole('link', { name: `查看笔记：${title}` }).click();
+  await expect(searchPage).toHaveURL(`${frontendUrl}${detailPath}`);
+  await searchPage.getByRole('button', { name: '返回上一页' }).click();
+  await expect(searchPage).toHaveURL(`${frontendUrl}${searchPath}`);
+  await expect(
+    searchPage.getByRole('link', { name: `查看笔记：${title}` }),
+  ).toBeVisible();
+  await searchPage.close();
+
+  const refreshedDetailPage = await context.newPage();
+  await refreshedDetailPage.goto('/profile');
+  await refreshedDetailPage
+    .getByRole('link', { name: `查看笔记：${title}` })
+    .click();
+  await expect(refreshedDetailPage).toHaveURL(`${frontendUrl}${detailPath}`);
+  await refreshedDetailPage.reload();
+  await refreshedDetailPage.getByRole('button', { name: '返回上一页' }).click();
+  await expect(refreshedDetailPage).toHaveURL(`${frontendUrl}/`);
+  await refreshedDetailPage.close();
+
+  const directDetailPage = await context.newPage();
+  await directDetailPage.goto(detailPath);
+  await directDetailPage.getByRole('button', { name: '返回上一页' }).click();
+  await expect(directDetailPage).toHaveURL(`${frontendUrl}/`);
+  await directDetailPage.close();
 });
 
 test('keeps one profile note row within the root viewport and allows a second row', async ({

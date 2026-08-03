@@ -125,6 +125,7 @@ export class MessageRealtimeService
     const origin = request.headers.origin;
     if (!origin || !this.allowedOrigins().has(origin)) return null;
     const sessionId = this.cookie(request.headers.cookie, SESSION_COOKIE_NAME);
+    if (sessionId) await this.auth.assertWriteAllowed(sessionId);
     const user = await this.auth.currentUser(sessionId);
     return user?.id ?? null;
   }

@@ -35,6 +35,12 @@ enum AvatarCleanupStatus {
   CLEANING
 }
 
+enum LegalAcceptanceScene {
+  REGISTRATION
+  LOGIN
+  RECONFIRMATION
+}
+
 model User {
   id                    String         @id @default(uuid()) @db.Uuid
   email                 String         @unique @db.VarChar(320)
@@ -46,6 +52,7 @@ model User {
   bio                   String?        @db.VarChar(100)
   avatarObjectKey       String?        @unique @db.VarChar(64)
   profileVersion        String         @default(uuid()) @db.Uuid
+  ageRestrictedAt       DateTime?      @db.Timestamptz(3)
   createdAt             DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime       @updatedAt @db.Timestamptz(3)
   lastLoginAt           DateTime       @default(now()) @db.Timestamptz(3)
@@ -63,8 +70,25 @@ model User {
   conversationsAsFirst  DirectConversation[] @relation("ConversationFirstParticipant")
   conversationsAsSecond DirectConversation[] @relation("ConversationSecondParticipant")
   sentDirectMessages    DirectMessage[]
+  legalAcceptances      LegalAcceptance[]
 
   @@map("users")
+}
+
+model LegalAcceptance {
+  id             String               @id @default(uuid()) @db.Uuid
+  userId         String               @db.Uuid
+  termsVersion   String               @db.VarChar(64)
+  privacyVersion String               @db.VarChar(64)
+  scene          LegalAcceptanceScene
+  evidenceKey    String               @unique @db.VarChar(160)
+  acceptedAt     DateTime             @default(now()) @db.Timestamptz(3)
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, termsVersion, privacyVersion, scene])
+  @@index([userId, termsVersion, privacyVersion])
+  @@index([userId, acceptedAt(sort: Desc)])
+  @@map("legal_acceptances")
 }
 
 model AvatarCleanup {

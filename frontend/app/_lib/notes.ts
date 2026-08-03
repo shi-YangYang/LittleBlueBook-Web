@@ -113,12 +113,48 @@ type NoteListScrollRestore = Pick<
   'path' | 'recordedAt' | 'scrollY'
 >;
 
-function isSafeInternalPath(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.startsWith('/') &&
-    !value.startsWith('//')
-  );
+function normalizeSafeNoteSourcePath(
+  value: unknown,
+  noteId: string,
+): string | null {
+  if (
+    typeof value !== 'string' ||
+    !value.startsWith('/') ||
+    value.startsWith('//')
+  ) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    const currentDetailPath = `/explore/${encodeURIComponent(noteId)}`;
+    if (url.pathname.replace(/\/$/, '') === currentDetailPath) return null;
+    if (/^\/explore\/[^/]+\/?$/.test(url.pathname)) return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+function currentNavigationType(): PerformanceNavigationTiming['type'] | null {
+  const entry = window.performance?.getEntriesByType('navigation').at(0) as
+    PerformanceNavigationTiming | undefined;
+  return entry?.type ?? null;
+}
+
+function clearBoundNoteDetailSource(): void {
+  const currentState =
+    window.history.state && typeof window.history.state === 'object'
+      ? (window.history.state as Record<string, unknown>)
+      : {};
+  if (NOTE_DETAIL_HISTORY_STATE_KEY in currentState) {
+    const nextState = { ...currentState };
+    delete nextState[NOTE_DETAIL_HISTORY_STATE_KEY];
+    window.history.replaceState(nextState, '', window.location.href);
+  }
+  window.sessionStorage.removeItem(NOTE_DETAIL_SOURCE_KEY);
+  window.sessionStorage.removeItem(NOTE_LIST_SCROLL_RESTORE_KEY);
 }
 
 export function markNoteDetailSource(noteId: string): void {
@@ -132,16 +168,39 @@ export function markNoteDetailSource(noteId: string): void {
   window.sessionStorage.setItem(NOTE_DETAIL_SOURCE_KEY, JSON.stringify(source));
 }
 
-export function bindNoteDetailSource(noteId: string): void {
+export function bindNoteDetailSource(
+  noteId: string,
+  navigationType = currentNavigationType(),
+): void {
   if (typeof window === 'undefined') return;
   const currentState =
     window.history.state && typeof window.history.state === 'object'
       ? (window.history.state as Record<string, unknown>)
       : {};
+  if (
+    navigationType === 'reload' &&
+    NOTE_DETAIL_HISTORY_STATE_KEY in currentState
+  ) {
+    clearBoundNoteDetailSource();
+    return;
+  }
+
   const existing = currentState[
     NOTE_DETAIL_HISTORY_STATE_KEY
   ] as Partial<BoundNoteDetailSource> | null;
-  if (existing?.noteId === noteId && isSafeInternalPath(existing.path)) return;
+  const existingPath = normalizeSafeNoteSourcePath(existing?.path, noteId);
+  const existingAge = Date.now() - (existing?.recordedAt ?? 0);
+  if (
+    existing?.noteId === noteId &&
+    existingPath &&
+    typeof existing.scrollY === 'number' &&
+    Number.isFinite(existing.scrollY) &&
+    existing.scrollY >= 0 &&
+    existingAge >= 0 &&
+    existingAge <= NOTE_LIST_SCROLL_RESTORE_MAX_AGE
+  ) {
+    return;
+  }
 
   const serialized = window.sessionStorage.getItem(NOTE_DETAIL_SOURCE_KEY);
   window.sessionStorage.removeItem(NOTE_DETAIL_SOURCE_KEY);
@@ -150,9 +209,10 @@ export function bindNoteDetailSource(noteId: string): void {
   try {
     const source = JSON.parse(serialized) as Partial<NoteDetailSource>;
     const age = Date.now() - (source.recordedAt ?? 0);
+    const sourcePath = normalizeSafeNoteSourcePath(source.path, noteId);
     if (
       source.noteId !== noteId ||
-      !isSafeInternalPath(source.path) ||
+      !sourcePath ||
       typeof source.scrollY !== 'number' ||
       !Number.isFinite(source.scrollY) ||
       source.scrollY < 0 ||
@@ -166,7 +226,7 @@ export function bindNoteDetailSource(noteId: string): void {
         ...currentState,
         [NOTE_DETAIL_HISTORY_STATE_KEY]: {
           noteId,
-          path: source.path,
+          path: sourcePath,
           recordedAt: source.recordedAt ?? Date.now(),
           scrollY: source.scrollY,
         } satisfies BoundNoteDetailSource,
@@ -177,7 +237,7 @@ export function bindNoteDetailSource(noteId: string): void {
     window.sessionStorage.setItem(
       NOTE_LIST_SCROLL_RESTORE_KEY,
       JSON.stringify({
-        path: source.path,
+        path: sourcePath,
         recordedAt: source.recordedAt ?? Date.now(),
         scrollY: source.scrollY,
       } satisfies NoteListScrollRestore),
@@ -196,14 +256,12 @@ export function consumeNoteDetailSource(noteId: string): string | null {
   const source = currentState[
     NOTE_DETAIL_HISTORY_STATE_KEY
   ] as Partial<BoundNoteDetailSource> | null;
-  if (source?.noteId !== noteId || !isSafeInternalPath(source.path)) {
-    return null;
-  }
-
   const nextState = { ...currentState };
   delete nextState[NOTE_DETAIL_HISTORY_STATE_KEY];
   window.history.replaceState(nextState, '', window.location.href);
-  return source.path;
+  const sourcePath = normalizeSafeNoteSourcePath(source?.path, noteId);
+  if (source?.noteId !== noteId || !sourcePath) return null;
+  return sourcePath;
 }
 
 export function consumeNoteListScrollRestore(path: string): number | null {

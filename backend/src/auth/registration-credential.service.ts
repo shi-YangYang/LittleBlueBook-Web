@@ -5,16 +5,18 @@ import { Inject, Injectable } from '@nestjs/common';
 import { RedisService } from '../redis/redis.service.js';
 import { REGISTRATION_TTL_SECONDS } from './auth.constants.js';
 import type { StoredRegistration } from './auth.types.js';
+import type { LegalChallenge } from './auth.types.js';
 
 @Injectable()
 export class RegistrationCredentialService {
   constructor(@Inject(RedisService) private readonly redis: RedisService) {}
 
-  async create(email: string): Promise<string> {
+  async create(email: string, challenge: LegalChallenge): Promise<string> {
     const token = randomBytes(32).toString('base64url');
     const record: StoredRegistration = {
       email,
       createdAt: new Date().toISOString(),
+      ...challenge,
     };
     await this.redis.set(this.key(token), JSON.stringify(record), {
       expirationSeconds: REGISTRATION_TTL_SECONDS,
@@ -49,11 +51,20 @@ export class RegistrationCredentialService {
       const parsed = JSON.parse(value) as Partial<StoredRegistration>;
       if (
         typeof parsed.email !== 'string' ||
-        typeof parsed.createdAt !== 'string'
+        typeof parsed.createdAt !== 'string' ||
+        typeof parsed.challengeId !== 'string' ||
+        typeof parsed.termsVersion !== 'string' ||
+        typeof parsed.privacyVersion !== 'string'
       ) {
         return null;
       }
-      return { email: parsed.email, createdAt: parsed.createdAt };
+      return {
+        email: parsed.email,
+        createdAt: parsed.createdAt,
+        challengeId: parsed.challengeId,
+        termsVersion: parsed.termsVersion,
+        privacyVersion: parsed.privacyVersion,
+      };
     } catch {
       return null;
     }

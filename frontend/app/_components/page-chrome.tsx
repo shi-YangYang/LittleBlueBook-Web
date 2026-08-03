@@ -9,6 +9,7 @@ import { Icon } from './icon';
 import { NotificationNavItem } from './notification-nav-item';
 import { MessageNavItem } from './message-nav-item';
 import { SearchTrigger } from './search-dialog';
+import { MoreMenu } from './more-menu';
 
 const menuItems = [
   { icon: 'discover', label: '发现', href: '/' },
@@ -125,14 +126,11 @@ export function PageSidebar({
         )}
       </nav>
       <nav className="secondary-nav" aria-label="其他功能">
-        <button type="button" onClick={() => onToast('功能开发中')}>
-          <Icon name="more" />
-          <span>更多</span>
-        </button>
-        <button type="button" onClick={() => onToast('功能开发中')}>
+        <MoreMenu authenticated={Boolean(user)} onToast={onToast} />
+        <Link href="/about">
           <Icon name="info" />
           <span>关于我们</span>
-        </button>
+        </Link>
       </nav>
     </aside>
   );

@@ -356,8 +356,8 @@ export class ProfileService {
       Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
     );
     const age = calculateAge(date, todayDate);
-    if (date > todayDate || age < 0 || age > 120) {
-      throw this.validationFailed('birthDate', '出生日期需对应0～120岁');
+    if (date > todayDate || age < 14 || age > 120) {
+      throw this.validationFailed('birthDate', '小蓝书仅支持年满14周岁的用户');
     }
     return date;
   }

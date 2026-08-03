@@ -17,6 +17,7 @@
 | SPEC-009 | 互动通知中心 | Accepted | `spec-009-notification-center/` |
 | SPEC-010 | 个人资料设置 | Accepted | `spec-010-profile-settings/` |
 | SPEC-011 | 评论互动、笔记浏览量与私信 | Accepted | `spec-011-engagement-and-messaging/` |
+| SPEC-012 | 服务条款、隐私政策与更多菜单 | Accepted | `spec-012-legal-terms-and-more/` |
 
 ## 状态说明
 

@@ -46,7 +46,15 @@ export async function apiRequest<T>(
     ({ data?: T } & Record<string, unknown>) | ApiErrorPayload;
 
   if (!response.ok) {
-    throw new ApiRequestError(response.status, payload as ApiErrorPayload);
+    const errorPayload = payload as ApiErrorPayload;
+    if (
+      typeof window !== 'undefined' &&
+      (errorPayload.code === 'LEGAL_ACCEPTANCE_REQUIRED' ||
+        errorPayload.code === 'ACCOUNT_AGE_RESTRICTED')
+    ) {
+      window.dispatchEvent(new Event('lbb:legal-status-required'));
+    }
+    throw new ApiRequestError(response.status, errorPayload);
   }
 
   if (

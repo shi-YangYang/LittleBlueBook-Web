@@ -39,6 +39,9 @@ function errorMessage(error: unknown): string {
     if (error.message === 'RATE_LIMITED') {
       return '操作过于频繁，请稍后再试';
     }
+    if (error.message === 'LEGAL_VERSION_CHANGED') {
+      return '条款已更新，请重新确认并获取验证码';
+    }
     return error.payload.message ?? '网络异常，请稍后重试';
   }
   return '网络异常，请稍后重试';
@@ -185,7 +188,7 @@ export function ReauthDialog({ open, onAuthenticated }: ReauthDialogProps) {
     if (event.key !== 'Tab' || !dialogRef.current) return;
     const focusable = Array.from(
       dialogRef.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        'button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
       ),
     );
     const first = focusable[0];
@@ -285,16 +288,27 @@ export function ReauthDialog({ open, onAuthenticated }: ReauthDialogProps) {
               <button className="primary-action" type="submit" disabled={busy}>
                 {busy ? '验证中…' : '登录/注册'}
               </button>
-              <label className="agreement">
+              <div className="agreement">
                 <input
+                  id="reauth-legal-acceptance"
                   type="checkbox"
                   checked={acceptedTerms}
                   aria-label="同意用户协议与隐私政策"
                   disabled={busy}
                   onChange={(event) => setAcceptedTerms(event.target.checked)}
                 />
-                <span>我已阅读并同意《用户协议》《隐私政策》</span>
-              </label>
+                <span>
+                  <label htmlFor="reauth-legal-acceptance">
+                    我已年满 14 周岁，并已阅读和同意
+                  </label>
+                  <a href="/terms" target="_blank" rel="noopener noreferrer">
+                    《用户协议》
+                  </a>
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer">
+                    《隐私政策》
+                  </a>
+                </span>
+              </div>
             </form>
           ) : (
             <form className="auth-form register-form" onSubmit={register}>

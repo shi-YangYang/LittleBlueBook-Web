@@ -39,12 +39,17 @@ describe('registration credential and session storage', () => {
       redis as unknown as RedisService,
     );
 
-    const token = await service.create('user@example.com');
+    const token = await service.create('user@example.com', {
+      challengeId: 'challenge-id',
+      termsVersion: 'terms-test-v1',
+      privacyVersion: 'privacy-test-v1',
+    });
 
     expect([...redis.values.keys()][0]).not.toContain(token);
     expect([...redis.ttl.values()][0]).toBe(600);
     await expect(service.consume(token)).resolves.toMatchObject({
       email: 'user@example.com',
+      challengeId: 'challenge-id',
     });
     await expect(service.consume(token)).resolves.toBeNull();
   });

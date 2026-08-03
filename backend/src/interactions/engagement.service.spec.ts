@@ -20,11 +20,15 @@ function record(overrides: Record<string, unknown> = {}) {
     content: '回复内容',
     deletedAt: null,
     createdAt: new Date('2026-08-01T10:00:00.000Z'),
-    author: { nickname: '回复者', avatarObjectKey: null },
+    author: {
+      nickname: '回复者',
+      avatarObjectKey: null,
+      ageRestrictedAt: null,
+    },
     replyTo: {
       id: targetId,
       deletedAt: null,
-      author: { nickname: '评论者' },
+      author: { nickname: '评论者', ageRestrictedAt: null },
     },
     likes: [],
     _count: { likes: 0, replies: 0 },
@@ -137,6 +141,50 @@ describe('SPEC-011 comment engagement', () => {
 
     expect(result).toEqual({ active: true, count: 3 });
     expect(transaction.notification.create).not.toHaveBeenCalled();
+  });
+
+  it('does not expose an age-restricted reply target nickname', async () => {
+    const transaction = {
+      $queryRaw: jest.fn(async () => [{ id: targetId }]),
+      noteComment: {
+        findUnique: jest.fn(async () => ({
+          id: targetId,
+          noteId,
+          authorId: targetAuthorId,
+          rootCommentId: rootId,
+          deletedAt: null,
+        })),
+        findFirst: jest.fn(async () => ({ id: rootId })),
+        create: jest.fn(async () =>
+          record({
+            replyTo: {
+              id: targetId,
+              deletedAt: null,
+              author: {
+                nickname: '不应公开的昵称',
+                ageRestrictedAt: new Date('2026-08-03T00:00:00.000Z'),
+              },
+            },
+          }),
+        ),
+        count: jest.fn(async () => 4),
+      },
+      notification: { createMany: jest.fn(async () => ({ count: 2 })) },
+    };
+
+    const result = await serviceWith(transaction).createReply(
+      'session',
+      noteId,
+      targetId,
+      '回复内容',
+    );
+
+    expect(result.comment.replyTo).toEqual({
+      id: targetId,
+      nickname: null,
+      deleted: true,
+    });
+    expect(JSON.stringify(result)).not.toContain('不应公开的昵称');
   });
 
   it('keeps a target referenced by a deleted placeholder and clears its likes', async () => {
