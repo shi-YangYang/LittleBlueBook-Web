@@ -114,6 +114,8 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
   const [reloadVersion, setReloadVersion] = useState(0);
   const [imageIndex, setImageIndex] = useState(0);
   const [failedImages, setFailedImages] = useState<Set<number>>(new Set());
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [videoReloadKey, setVideoReloadKey] = useState(0);
   const [toast, setToast] = useState('');
   const [relationshipBusy, setRelationshipBusy] = useState<
     Partial<Record<RelationshipKind, boolean>>
@@ -158,7 +160,16 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
     focusCommentEntry: boolean;
     returnTarget: HTMLButtonElement | null;
   } | null>(null);
+  const backNavigationFallbackRef = useRef<number | null>(null);
   const locatedCommentRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (backNavigationFallbackRef.current !== null) {
+        window.clearTimeout(backNavigationFallbackRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     locatedCommentRef.current = false;
@@ -1039,7 +1050,15 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
         aria-label="返回上一页"
         onClick={() => {
           const sourcePath = consumeNoteDetailSource(noteId);
-          router.replace(sourcePath ?? '/');
+          const target = sourcePath ?? '/';
+          router.replace(target);
+          if (backNavigationFallbackRef.current !== null) {
+            window.clearTimeout(backNavigationFallbackRef.current);
+          }
+          backNavigationFallbackRef.current = window.setTimeout(() => {
+            const current = `${window.location.pathname}${window.location.search}`;
+            if (current !== target) window.location.replace(target);
+          }, 1_500);
         }}
       >
         <Icon name="chevronLeft" size={20} />
@@ -1048,10 +1067,15 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
 
       <article className="note-detail">
         <section
-          className="detail-media"
-          aria-label={`笔记图片，第${imageIndex + 1}张，共${note.images.length}张`}
-          tabIndex={0}
+          className={`detail-media ${note.contentType === 'VIDEO' ? 'detail-video-media' : ''}`}
+          aria-label={
+            note.contentType === 'VIDEO'
+              ? '笔记视频播放器'
+              : `笔记图片，第${imageIndex + 1}张，共${note.images.length}张`
+          }
+          tabIndex={note.contentType === 'IMAGE' ? 0 : undefined}
           onKeyDown={(event) => {
+            if (note.contentType !== 'IMAGE') return;
             if (event.key === 'ArrowLeft') {
               event.preventDefault();
               selectImage(imageIndex - 1);
@@ -1061,7 +1085,38 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
             }
           }}
         >
-          {currentImage && !failedImages.has(imageIndex) ? (
+          {note.contentType === 'VIDEO' && note.video ? (
+            videoFailed ? (
+              <div className="detail-image-error" role="alert">
+                <Icon name="video" size={54} />
+                <span>视频加载失败，请重试</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVideoFailed(false);
+                    setVideoReloadKey((value) => value + 1);
+                  }}
+                >
+                  重新加载
+                </button>
+              </div>
+            ) : (
+              <video
+                key={videoReloadKey}
+                src={note.video.url}
+                poster={note.video.posterUrl}
+                controls
+                preload="metadata"
+                playsInline
+                crossOrigin="anonymous"
+                aria-label={`${note.title} 视频`}
+                style={{
+                  aspectRatio: `${note.video.width} / ${note.video.height}`,
+                }}
+                onError={() => setVideoFailed(true)}
+              />
+            )
+          ) : currentImage && !failedImages.has(imageIndex) ? (
             <img
               src={currentImage.url}
               alt={`笔记图片 ${imageIndex + 1}`}
@@ -1080,7 +1135,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
             </div>
           )}
 
-          {note.images.length > 1 ? (
+          {note.contentType === 'IMAGE' && note.images.length > 1 ? (
             <>
               <button
                 className="carousel-button previous"

@@ -30,6 +30,7 @@ function response(body: unknown, status = 200) {
 
 const note = {
   id: '00000000-0000-4000-8000-000000000004',
+  contentType: 'IMAGE' as const,
   title: '<img src=x onerror=alert(1)>',
   content: '<script>alert(1)</script>\n第二行',
   createdAt: '2026-07-26T11:00:00.000Z',
@@ -43,6 +44,7 @@ const note = {
     { url: 'https://media.example.test/one.png', width: 100, height: 120 },
     { url: 'https://media.example.test/two.webp', width: 90, height: 80 },
   ],
+  video: null,
   interactions: { likes: 0, favorites: 0, comments: 0, views: 0 },
   viewer: {
     authenticated: false,

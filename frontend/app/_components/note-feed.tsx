@@ -169,7 +169,11 @@ export function NoteFeed({
 
   if (loading) {
     return (
-      <section className="feed-state" aria-label={label} aria-busy="true">
+      <section
+        className="note-feed feed-state"
+        aria-label={label}
+        aria-busy="true"
+      >
         <div className="feed-loading-grid" aria-hidden="true">
           {Array.from({ length: 6 }, (_, index) => (
             <span key={index} />
@@ -182,7 +186,10 @@ export function NoteFeed({
 
   if (initialError) {
     return (
-      <section className="feed-state feed-error-state" aria-label={label}>
+      <section
+        className="note-feed feed-state feed-error-state"
+        aria-label={label}
+      >
         <Icon name="empty" size={46} />
         <p role="alert">{errorMessage}</p>
         <button
@@ -197,7 +204,7 @@ export function NoteFeed({
 
   if (items.length === 0) {
     return (
-      <section aria-label={label}>
+      <section className="note-feed" aria-label={label}>
         <div className="feed-grid" data-testid="feed-grid" aria-hidden="true" />
         <div className="feed-state feed-empty-state">
           <Icon name="empty" size={48} />
@@ -213,7 +220,7 @@ export function NoteFeed({
   }
 
   return (
-    <section aria-label={label}>
+    <section className="note-feed" aria-label={label}>
       <div className="feed-grid" data-testid="feed-grid">
         {items.map((note) => (
           <NoteCard

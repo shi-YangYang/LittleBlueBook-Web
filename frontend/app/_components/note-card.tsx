@@ -19,20 +19,23 @@ type NoteCardProps = {
   onInteractionError?: (message: string) => void;
 };
 
+const FEED_CARD_COVER_ASPECT_RATIO = '4 / 3';
+
 export function NoteCard({
   note,
   onAuthenticationRequired,
   onLikeChanged,
   onInteractionError,
 }: NoteCardProps) {
-  const aspectRatio =
-    note.cover.width > 0 && note.cover.height > 0
-      ? `${note.cover.width} / ${note.cover.height}`
-      : '4 / 5';
   const [liked, setLiked] = useState(note.liked);
   const [likes, setLikes] = useState(note.likes);
   const [canLike, setCanLike] = useState(note.canLike);
   const [busy, setBusy] = useState(false);
+  const duration = note.videoDurationMs
+    ? `${Math.floor(note.videoDurationMs / 60_000)}:${String(
+        Math.floor(note.videoDurationMs / 1000) % 60,
+      ).padStart(2, '0')}`
+    : null;
 
   const setLike = async (target: boolean, canRequestAuthentication = true) => {
     if (busy || !canLike) return;
@@ -80,8 +83,24 @@ export function NoteCard({
         aria-label={`查看笔记：${note.title}`}
         onNavigate={() => markNoteDetailSource(note.id)}
       >
-        <span className="cover-wrap" style={{ aspectRatio }}>
+        <span
+          className="cover-wrap"
+          style={{ aspectRatio: FEED_CARD_COVER_ASPECT_RATIO }}
+        >
           <img src={note.cover.url} alt="" loading="lazy" />
+          {note.contentType === 'VIDEO' ? (
+            <>
+              <span
+                className="video-play-indicator"
+                aria-label={`视频${duration ? `，时长${duration}` : ''}`}
+              />
+              {duration ? (
+                <span className="video-duration" aria-hidden="true">
+                  {duration}
+                </span>
+              ) : null}
+            </>
+          ) : null}
         </span>
         <span className="card-title">{note.title}</span>
       </Link>

@@ -44,9 +44,4 @@ export type PublicUserProfile = {
   };
 };
 
-export type EmptyVideoPage = {
-  items: [];
-  nextCursor: null;
-};
-
 export type SearchNotePage = NotePage;

@@ -18,18 +18,13 @@ import {
   SearchQueryDto,
 } from './dto/search-query.dto.js';
 import {
-  EmptyVideoPageResponseDto,
   PublicUserProfileResponseDto,
   SearchNotePageResponseDto,
   SearchUserPageResponseDto,
 } from './dto/search-response.dto.js';
 import { SearchService } from './search.service.js';
 import { SearchRateLimitService } from './search-rate-limit.service.js';
-import type {
-  EmptyVideoPage,
-  PublicUserProfile,
-  SearchUserPage,
-} from './search.types.js';
+import type { PublicUserProfile, SearchUserPage } from './search.types.js';
 
 @ApiTags('search')
 @Controller('search')
@@ -64,19 +59,26 @@ export class SearchController {
   }
 
   @Get('videos')
-  @ApiOperation({ summary: 'Read the formal empty video search category' })
+  @ApiOperation({ summary: 'Search public video notes' })
   @ApiOkResponse({
-    description: 'An empty page until video support exists',
-    type: EmptyVideoPageResponseDto,
+    description: 'Ranked cursor-paginated video results',
+    type: SearchNotePageResponseDto,
   })
   @ApiBadRequestResponse({ description: 'Keyword validation failed' })
   @ApiTooManyRequestsResponse({ description: 'Search rate limit reached' })
   async videos(
     @Req() request: Request,
     @Query() query: SearchQueryDto,
-  ): Promise<{ data: EmptyVideoPage }> {
+  ): Promise<{ data: NotePage }> {
     await this.rateLimit.reserve(request.ip);
-    return { data: await this.search.videos(query.keyword) };
+    return {
+      data: await this.search.videos(
+        readCookie(request, SESSION_COOKIE_NAME),
+        query.keyword,
+        query.cursor,
+        query.limit,
+      ),
+    };
   }
 
   @Get('users')

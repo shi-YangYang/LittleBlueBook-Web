@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
+import { tinyBlueCover, tinyH264Mp4 } from '../fixtures/tiny-h264-video';
+
 const apiUrl = process.env.E2E_API_URL ?? 'http://127.0.0.1:3101/api/v1';
 const authorSession = 'spec008-author-session';
 const viewerSession = 'spec008-viewer-session';
@@ -33,6 +35,34 @@ async function publish(
         name: 'search-note.png',
         mimeType: 'image/png',
         buffer: blueImage,
+      },
+    },
+  });
+  expect(response.status()).toBe(201);
+  return ((await response.json()).data as { id: string }).id;
+}
+
+async function publishVideo(
+  request: APIRequestContext,
+  title: string,
+  content: string,
+): Promise<string> {
+  const response = await request.post(`${apiUrl}/notes/videos`, {
+    headers: cookie(authorSession),
+    multipart: {
+      title,
+      content,
+      channelCode: 'digital',
+      clientRequestId: randomUUID(),
+      video: {
+        name: 'search-video.mp4',
+        mimeType: 'video/mp4',
+        buffer: tinyH264Mp4,
+      },
+      cover: {
+        name: 'search-video-cover.png',
+        mimeType: 'image/png',
+        buffer: tinyBlueCover,
       },
     },
   });
@@ -159,7 +189,7 @@ test('positions the shared search dialog against the complete desktop viewport',
   });
 });
 
-test('searches public note and user fields with ranking, privacy and formal video emptiness', async ({
+test('searches public note, video and user fields with ranking and privacy', async ({
   request,
 }, testInfo) => {
   test.skip(
@@ -172,6 +202,11 @@ test('searches public note and user fields with ranking, privacy and formal vide
     request,
     exactTitle,
     `包含唯一正文词 户外体验${suffix}`,
+  );
+  const exactVideoId = await publishVideo(
+    request,
+    exactTitle,
+    `真实视频搜索正文 户外体验${suffix}`,
   );
   await publish(request, `${exactTitle}进阶`, `另一篇正文 户外体验${suffix}`);
 
@@ -243,10 +278,9 @@ test('searches public note and user fields with ranking, privacy and formal vide
     `${apiUrl}/search/videos?keyword=${encodeURIComponent(exactTitle)}&limit=20`,
   );
   expect(videos.status()).toBe(200);
-  expect((await videos.json()).data).toEqual({
-    items: [],
-    nextCursor: null,
-  });
+  expect((await videos.json()).data.items).toContainEqual(
+    expect.objectContaining({ id: exactVideoId, title: exactTitle }),
+  );
 
   const publicProfile = await request.get(
     `${apiUrl}/users/${authorId}/profile`,
@@ -329,6 +363,7 @@ test('opens the modal, restores URL tabs and completes public-profile follow', a
   page,
   request,
 }, testInfo) => {
+  test.setTimeout(90_000);
   test.skip(
     testInfo.project.name !== 'chromium-1440',
     'The related browser journey runs once in Chromium.',
@@ -336,6 +371,7 @@ test('opens the modal, restores URL tabs and completes public-profile follow', a
   const suffix = Date.now();
   const title = `模态搜索${suffix}`;
   await publish(request, title, `浏览器搜索正文${suffix}`);
+  await publishVideo(request, title, `浏览器视频搜索正文${suffix}`);
   await request.delete(`${apiUrl}/users/${authorId}/follow`, {
     headers: cookie(viewerSession),
   });
@@ -364,7 +400,9 @@ test('opens the modal, restores URL tabs and completes public-profile follow', a
   await expect(page).toHaveURL(
     `/search?keyword=${encodeURIComponent(title)}&type=video`,
   );
-  await expect(page.getByText('暂无视频内容')).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: `查看笔记：${title}` }),
+  ).toBeVisible();
   await page.reload();
   await expect(page.getByRole('tab', { name: '视频' })).toHaveAttribute(
     'aria-selected',
@@ -413,7 +451,11 @@ test('opens the modal, restores URL tabs and completes public-profile follow', a
   await expect(page).toHaveURL(`/users/${authorId}`);
   await expect(page.getByRole('heading', { name: '搜索作者' })).toBeVisible();
   await expect(page.getByText('小蓝书号：0000000110')).toBeVisible();
-  await expect(page.getByText(title)).toBeVisible();
+  const publishedNotes = page.getByRole('link', {
+    name: `查看笔记：${title}`,
+  });
+  await expect(publishedNotes).toHaveCount(2);
+  await expect(publishedNotes.first()).toBeVisible();
 
   await page.getByRole('button', { name: '关注' }).click();
   const auth = page.getByRole('dialog', { name: '邮箱登录' });

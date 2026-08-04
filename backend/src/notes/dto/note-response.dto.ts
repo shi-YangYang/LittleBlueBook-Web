@@ -28,6 +28,9 @@ class NoteCardResponseDto {
   @ApiProperty({ type: String, format: 'uuid' })
   id!: string;
 
+  @ApiProperty({ type: String, enum: ['IMAGE', 'VIDEO'] })
+  contentType!: 'IMAGE' | 'VIDEO';
+
   @ApiProperty({ type: String })
   title!: string;
 
@@ -48,6 +51,9 @@ class NoteCardResponseDto {
 
   @ApiProperty({ type: Number, minimum: 0 })
   views!: number;
+
+  @ApiProperty({ type: Number, nullable: true, minimum: 1000 })
+  videoDurationMs!: number | null;
 }
 
 class NotePageDto {
@@ -128,6 +134,9 @@ class NoteDetailDto {
   @ApiProperty({ type: String, format: 'uuid' })
   id!: string;
 
+  @ApiProperty({ type: String, enum: ['IMAGE', 'VIDEO'] })
+  contentType!: 'IMAGE' | 'VIDEO';
+
   @ApiProperty({ type: String })
   title!: string;
 
@@ -145,6 +154,19 @@ class NoteDetailDto {
 
   @ApiProperty({ type: () => NoteImageResponseDto, isArray: true })
   images!: NoteImageResponseDto[];
+
+  @ApiProperty({
+    type: Object,
+    nullable: true,
+    description: 'Video stream, poster and dimensions for VIDEO notes',
+  })
+  video!: {
+    url: string;
+    posterUrl: string;
+    width: number;
+    height: number;
+    durationMs: number;
+  } | null;
 
   @ApiProperty({ type: () => NoteInteractionsResponseDto })
   interactions!: NoteInteractionsResponseDto;

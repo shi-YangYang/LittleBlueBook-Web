@@ -8,6 +8,7 @@ export type NoteAuthor = {
 
 export type NoteCard = {
   id: string;
+  contentType: 'IMAGE' | 'VIDEO';
   title: string;
   cover: {
     url: string;
@@ -19,6 +20,7 @@ export type NoteCard = {
   liked: boolean;
   canLike: boolean;
   views: number;
+  videoDurationMs: number | null;
 };
 
 export type NotePage = {
@@ -28,6 +30,7 @@ export type NotePage = {
 
 export type NoteDetail = {
   id: string;
+  contentType: 'IMAGE' | 'VIDEO';
   title: string;
   content: string;
   createdAt: string;
@@ -42,6 +45,13 @@ export type NoteDetail = {
     width: number;
     height: number;
   }>;
+  video: {
+    url: string;
+    posterUrl: string;
+    width: number;
+    height: number;
+    durationMs: number;
+  } | null;
   interactions: {
     likes: number;
     favorites: number;

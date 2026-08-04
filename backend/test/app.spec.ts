@@ -60,6 +60,7 @@ describe('backend application', () => {
     expect(response.body.paths).toHaveProperty('/api/v1/profile/me/settings');
     expect(response.body.paths).toHaveProperty('/api/v1/channels');
     expect(response.body.paths).toHaveProperty('/api/v1/notes');
+    expect(response.body.paths).toHaveProperty('/api/v1/notes/videos');
     expect(response.body.paths).toHaveProperty('/api/v1/notes/recommendations');
     expect(response.body.paths).toHaveProperty(
       '/api/v1/notes/channels/{channelCode}',
@@ -89,6 +90,50 @@ describe('backend application', () => {
         'multipart/form-data'
       ].schema.required,
     ).toContain('channelCode');
+    const videoPublish = response.body.paths['/api/v1/notes/videos'].post;
+    expect(
+      videoPublish.requestBody.content['multipart/form-data'].schema.required,
+    ).toEqual(
+      expect.arrayContaining([
+        'title',
+        'content',
+        'channelCode',
+        'clientRequestId',
+        'video',
+        'cover',
+      ]),
+    );
+    expect(
+      videoPublish.requestBody.content['multipart/form-data'].schema.properties,
+    ).toEqual(
+      expect.objectContaining({
+        video: expect.objectContaining({ format: 'binary' }),
+        cover: expect.objectContaining({ format: 'binary' }),
+      }),
+    );
+    expect(videoPublish.responses).toEqual(
+      expect.objectContaining({
+        '201': expect.any(Object),
+        '400': expect.any(Object),
+        '401': expect.any(Object),
+        '429': expect.any(Object),
+      }),
+    );
+    const publicMedia = response.body.paths['/api/v1/media/{objectKey}'];
+    expect(publicMedia).toEqual(
+      expect.objectContaining({
+        get: expect.objectContaining({
+          responses: expect.objectContaining({
+            '200': expect.any(Object),
+            '206': expect.any(Object),
+            '404': expect.any(Object),
+          }),
+        }),
+        head: expect.objectContaining({
+          responses: expect.objectContaining({ '200': expect.any(Object) }),
+        }),
+      }),
+    );
     expect(
       response.body.paths['/api/v1/channels'].get.responses['200'].content[
         'application/json'

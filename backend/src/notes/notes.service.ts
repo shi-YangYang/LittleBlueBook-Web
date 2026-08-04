@@ -117,6 +117,7 @@ export class NotesService {
           title,
           content,
           clientRequestId: input.clientRequestId,
+          contentType: 'IMAGE',
           images: {
             create: storedImages.map((image, order) => ({
               objectKey: image.objectKey,
@@ -161,6 +162,20 @@ export class NotesService {
   ): Promise<NotePage> {
     const viewer = await this.auth.currentUser(sessionId);
     return this.list({ scope: 'recommendations' }, cursor, limit, viewer?.id);
+  }
+
+  async videos(
+    sessionId: string | undefined,
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<NotePage> {
+    const viewer = await this.auth.currentUser(sessionId);
+    return this.list(
+      { contentType: 'VIDEO', scope: 'videos' },
+      cursor,
+      limit,
+      viewer?.id,
+    );
   }
 
   async channel(
@@ -227,6 +242,7 @@ export class NotesService {
       where: { id: noteId },
       select: {
         id: true,
+        contentType: true,
         title: true,
         content: true,
         createdAt: true,
@@ -260,6 +276,15 @@ export class NotesService {
             height: true,
           },
         },
+        video: {
+          select: {
+            videoObjectKey: true,
+            coverObjectKey: true,
+            width: true,
+            height: true,
+            durationMs: true,
+          },
+        },
         likes: {
           where: { userId: viewerId },
           take: 1,
@@ -279,12 +304,18 @@ export class NotesService {
         },
       },
     });
-    if (!note || note.author.ageRestrictedAt || note.images.length < 1) {
+    if (
+      !note ||
+      note.author.ageRestrictedAt ||
+      (note.contentType === 'IMAGE' && note.images.length < 1) ||
+      (note.contentType === 'VIDEO' && !note.video)
+    ) {
       throw this.notFound();
     }
 
     return {
       id: note.id,
+      contentType: note.contentType,
       title: note.title,
       content: note.content,
       createdAt: note.createdAt.toISOString(),
@@ -305,6 +336,16 @@ export class NotesService {
         width: image.width,
         height: image.height,
       })),
+      video:
+        note.contentType === 'VIDEO' && note.video
+          ? {
+              url: this.media.publicUrl(note.video.videoObjectKey),
+              posterUrl: this.media.publicUrl(note.video.coverObjectKey),
+              width: note.video.width,
+              height: note.video.height,
+              durationMs: note.video.durationMs,
+            }
+          : null,
       interactions: {
         likes: note._count.likes,
         favorites: note._count.favorites,
@@ -398,6 +439,7 @@ export class NotesService {
     filter: {
       authorId?: string;
       channelId?: string;
+      contentType?: 'IMAGE' | 'VIDEO';
       scope: string;
     },
     cursorInput: string | undefined,
@@ -429,12 +471,14 @@ export class NotesService {
         author: { ageRestrictedAt: null },
         ...(filter.authorId ? { authorId: filter.authorId } : {}),
         ...(filter.channelId ? { channelId: filter.channelId } : {}),
+        ...(filter.contentType ? { contentType: filter.contentType } : {}),
         ...cursorWhere,
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: pageSize + 1,
       select: {
         id: true,
+        contentType: true,
         title: true,
         createdAt: true,
         viewCount: true,
@@ -448,6 +492,14 @@ export class NotesService {
             objectKey: true,
             width: true,
             height: true,
+          },
+        },
+        video: {
+          select: {
+            coverObjectKey: true,
+            coverWidth: true,
+            coverHeight: true,
+            durationMs: true,
           },
         },
         likes: viewerId
@@ -510,6 +562,7 @@ export class NotesService {
       note: {
         select: {
           id: true,
+          contentType: true,
           title: true,
           viewCount: true,
           author: {
@@ -522,6 +575,14 @@ export class NotesService {
               objectKey: true,
               width: true,
               height: true,
+            },
+          },
+          video: {
+            select: {
+              coverObjectKey: true,
+              coverWidth: true,
+              coverHeight: true,
+              durationMs: true,
             },
           },
           likes: {
@@ -572,6 +633,7 @@ export class NotesService {
   private toCard(
     note: {
       id: string;
+      contentType: 'IMAGE' | 'VIDEO';
       title: string;
       author: {
         id: string;
@@ -583,13 +645,27 @@ export class NotesService {
         width: number;
         height: number;
       }>;
+      video: {
+        coverObjectKey: string;
+        coverWidth: number;
+        coverHeight: number;
+        durationMs: number;
+      } | null;
       likes?: Array<{ userId: string }>;
       _count: { likes: number };
       viewCount: number;
     },
     viewerId?: string,
   ): NoteCard {
-    const cover = note.images[0];
+    const imageCover = note.images[0];
+    const cover =
+      note.contentType === 'VIDEO' && note.video
+        ? {
+            objectKey: note.video.coverObjectKey,
+            width: note.video.coverWidth,
+            height: note.video.coverHeight,
+          }
+        : imageCover;
     if (!cover) {
       throw new ApiException(
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -599,6 +675,7 @@ export class NotesService {
     }
     return {
       id: note.id,
+      contentType: note.contentType,
       title: note.title,
       cover: {
         url: this.media.publicUrl(cover.objectKey),
@@ -614,6 +691,8 @@ export class NotesService {
       liked: (note.likes?.length ?? 0) > 0,
       canLike: viewerId !== note.author.id,
       views: note.viewCount,
+      videoDurationMs:
+        note.contentType === 'VIDEO' ? (note.video?.durationMs ?? null) : null,
     };
   }
 

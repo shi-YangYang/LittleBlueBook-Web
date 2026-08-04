@@ -77,6 +77,17 @@ function dependencies() {
     deleteMany: jest.fn(async () => undefined),
     deleteStrict: jest.fn(async () => undefined),
     read: jest.fn(),
+    createTemporaryVideo: jest.fn(),
+    markTemporaryComplete: jest.fn(),
+    withTemporaryFile: jest.fn(),
+    finalizeTemporaryVideo: jest.fn(),
+    deleteTemporary: jest.fn(),
+    preparePendingObject: jest.fn(),
+    completePendingObjects: jest.fn(),
+    deletePendingObjects: jest.fn(),
+    listPendingObjectKeys: jest.fn(),
+    info: jest.fn(),
+    createReadStream: jest.fn(),
     publicUrl: jest.fn((key: string) => `https://media.example.test/${key}`),
   };
   const redis = { eval: jest.fn(async () => 1) };

@@ -13,14 +13,14 @@ import { MoreMenu } from './more-menu';
 
 const menuItems = [
   { icon: 'discover', label: '发现', href: '/' },
-  { icon: 'video', label: '视频' },
+  { icon: 'video', label: '视频', href: '/videos' },
   { icon: 'live', label: '直播' },
   { icon: 'publish', label: '发布', href: '/publish' },
 ] as const;
 
 type PageSidebarProps = {
   user: AuthenticatedUser | null;
-  active?: 'discover' | 'profile' | 'notifications' | 'messages';
+  active?: 'discover' | 'video' | 'profile' | 'notifications' | 'messages';
   onLogin: (destination?: string) => void;
   onToast: (message: string) => void;
 };
@@ -64,10 +64,20 @@ export function PageSidebar({
               )
             ) : (
               <Link
-                className={`nav-item ${active === 'discover' ? 'active' : ''}`}
+                className={`nav-item ${
+                  (item.href === '/' && active === 'discover') ||
+                  (item.href === '/videos' && active === 'video')
+                    ? 'active'
+                    : ''
+                }`}
                 href={item.href}
                 key={item.label}
-                aria-current={active === 'discover' ? 'page' : undefined}
+                aria-current={
+                  (item.href === '/' && active === 'discover') ||
+                  (item.href === '/videos' && active === 'video')
+                    ? 'page'
+                    : undefined
+                }
               >
                 <Icon name={item.icon} />
                 <span>{item.label}</span>

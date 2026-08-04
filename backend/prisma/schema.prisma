@@ -41,6 +41,11 @@ enum LegalAcceptanceScene {
   RECONFIRMATION
 }
 
+enum NoteContentType {
+  IMAGE
+  VIDEO
+}
+
 model User {
   id                    String         @id @default(uuid()) @db.Uuid
   email                 String         @unique @db.VarChar(320)
@@ -134,9 +139,11 @@ model Note {
   createdAt       DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime       @updatedAt @db.Timestamptz(3)
   viewCount       Int            @default(0)
+  contentType     NoteContentType @default(IMAGE)
   author          User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
   channel         Channel        @relation(fields: [channelId], references: [id], onDelete: Restrict)
   images          NoteImage[]
+  video           NoteVideo?
   likes           NoteLike[]
   favorites       NoteFavorite[]
   comments        NoteComment[]
@@ -147,6 +154,9 @@ model Note {
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@index([authorId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([channelId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([contentType, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([channelId, contentType, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([authorId, contentType, createdAt(sort: Desc), id(sort: Desc)])
   @@map("notes")
 }
 
@@ -254,6 +264,29 @@ model NoteImage {
 
   @@unique([noteId, order])
   @@map("note_images")
+}
+
+model NoteVideo {
+  id             String  @id @default(uuid()) @db.Uuid
+  noteId         String  @unique @db.Uuid
+  videoObjectKey String  @unique @db.VarChar(64)
+  videoMimeType  String  @db.VarChar(32)
+  videoByteSize  Int
+  width          Int
+  height         Int
+  durationMs     Int
+  videoCodec     String  @db.VarChar(16)
+  audioCodec     String? @db.VarChar(16)
+  coverObjectKey String  @unique @db.VarChar(64)
+  coverMimeType  String  @db.VarChar(16)
+  coverByteSize  Int
+  coverWidth     Int
+  coverHeight    Int
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  note           Note    @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@map("note_videos")
 }
 
 model Notification {

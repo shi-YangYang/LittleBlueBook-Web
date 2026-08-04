@@ -284,10 +284,12 @@ describe('ProfilePage', () => {
         String(input).endsWith('/profile/me'),
       ),
     ).toHaveLength(2);
-    expect(
-      fetchMock.mock.calls.some(([input]) =>
-        String(input).includes('/notes/mine'),
-      ),
-    ).toBe(true);
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([input]) =>
+          String(input).includes('/notes/mine'),
+        ),
+      ).toBe(true),
+    );
   });
 });

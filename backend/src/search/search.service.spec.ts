@@ -225,13 +225,17 @@ describe('SearchService', () => {
     });
   });
 
-  it('keeps the video category formal and empty after validating input', async () => {
+  it('searches the video category independently and validates input', async () => {
     const { service } = dependencies(false);
-    await expect(service.videos('蓝书')).resolves.toEqual({
+    await expect(
+      service.videos(undefined, '蓝书', undefined, 20),
+    ).resolves.toEqual({
       items: [],
       nextCursor: null,
     });
-    await expect(service.videos(' ')).rejects.toMatchObject({
+    await expect(
+      service.videos(undefined, ' ', undefined, 20),
+    ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'SEARCH_KEYWORD_INVALID' }),
     });
   });

@@ -11,6 +11,7 @@ import {
   Req,
   Res,
   UploadedFiles,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import {
@@ -45,6 +46,12 @@ import {
 } from './dto/note-response.dto.js';
 import { PublishNoteDto } from './dto/publish-note.dto.js';
 import { NotesService } from './notes.service.js';
+import { VideoPublishingService } from './video-publishing.service.js';
+import {
+  VIDEO_UPLOAD_RESERVATION,
+  VideoUploadGuard,
+  type VideoUploadRequest,
+} from './video-upload.guard.js';
 import type {
   NoteDetail,
   NotePage,
@@ -55,7 +62,63 @@ import type {
 @ApiTags('notes')
 @Controller('notes')
 export class NotesController {
-  constructor(@Inject(NotesService) private readonly notes: NotesService) {}
+  constructor(
+    @Inject(NotesService) private readonly notes: NotesService,
+    @Inject(VideoPublishingService)
+    private readonly videoPublishing: VideoPublishingService,
+  ) {}
+
+  @Post('videos')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(VideoUploadGuard)
+  @ApiOperation({ summary: 'Publish one authenticated H.264 MP4 video note' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: [
+        'title',
+        'content',
+        'channelCode',
+        'clientRequestId',
+        'video',
+        'cover',
+      ],
+      properties: {
+        title: { type: 'string', minLength: 1, maxLength: 50 },
+        content: { type: 'string', minLength: 1, maxLength: 2000 },
+        channelCode: { type: 'string', pattern: '^[a-z][a-z0-9-]{1,31}$' },
+        clientRequestId: { type: 'string', format: 'uuid' },
+        video: {
+          type: 'string',
+          format: 'binary',
+          description: 'One H.264 MP4, 1 second to 10 minutes, at most 100 MiB',
+        },
+        cover: {
+          type: 'string',
+          format: 'binary',
+          description: 'Custom or browser-extracted JPEG, PNG or WebP cover',
+        },
+      },
+    },
+  })
+  @ApiCreatedResponse({ type: PublishNoteResponseDto })
+  @ApiBadRequestResponse({ description: 'Video, cover or fields are invalid' })
+  @ApiTooManyRequestsResponse({
+    description: 'Video upload rate limit reached',
+  })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  async publishVideo(
+    @Req() request: VideoUploadRequest,
+  ): Promise<{ data: PublishResult }> {
+    const reservation = request[VIDEO_UPLOAD_RESERVATION];
+    if (!reservation) throw new Error('Video upload reservation is missing');
+    try {
+      return { data: await this.videoPublishing.publish(request, reservation) };
+    } finally {
+      await this.videoPublishing.releaseReservation(reservation);
+    }
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -167,6 +230,25 @@ export class NotesController {
   ): Promise<{ data: NotePage }> {
     return {
       data: await this.notes.recommendations(
+        readCookie(request, SESSION_COOKIE_NAME),
+        query.cursor,
+        query.limit,
+      ),
+    };
+  }
+
+  @Get('videos')
+  @ApiOperation({ summary: 'List public video notes newest first' })
+  @ApiOkResponse({
+    description: 'A cursor-paginated video-only feed',
+    type: NotePageResponseDto,
+  })
+  async videos(
+    @Req() request: Request,
+    @Query() query: ListNotesDto,
+  ): Promise<{ data: NotePage }> {
+    return {
+      data: await this.notes.videos(
         readCookie(request, SESSION_COOKIE_NAME),
         query.cursor,
         query.limit,

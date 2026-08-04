@@ -41,6 +41,9 @@ importers:
       '@prisma/client':
         specifier: 7.9.0
         version: 7.9.0(prisma@7.9.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3))(typescript@5.9.3)
+      busboy:
+        specifier: 1.6.0
+        version: 1.6.0
       class-transformer:
         specifier: 0.5.1
         version: 0.5.1
@@ -90,6 +93,9 @@ importers:
       '@swc/jest':
         specifier: 0.2.39
         version: 0.2.39(@swc/core@1.15.46)
+      '@types/busboy':
+        specifier: 1.5.4
+        version: 1.5.4
       '@types/express':
         specifier: 5.0.5
         version: 5.0.5
@@ -1730,6 +1736,9 @@ packages:
 
   '@types/body-parser@1.19.6':
     resolution: {integrity: sha512-HLFeCYgz89uk22N5Qg3dvGvsv46B8GLvKKo1zKG4NybA8U2DiEO3w9lqGg29t/tfLRJpJ6iQxnVw4OnB7MoM9g==}
+
+  '@types/busboy@1.5.4':
+    resolution: {integrity: sha512-kG7WrUuAKK0NoyxfQHsVE6j1m01s6kMma64E+OZenQABMQyTJop1DumUWcLwAQ2JzpefU7PDYoRDKl8uZosFjw==}
 
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
@@ -6590,6 +6599,10 @@ snapshots:
   '@types/body-parser@1.19.6':
     dependencies:
       '@types/connect': 3.4.38
+      '@types/node': 24.13.3
+
+  '@types/busboy@1.5.4':
+    dependencies:
       '@types/node': 24.13.3
 
   '@types/chai@5.2.3':

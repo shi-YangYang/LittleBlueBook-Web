@@ -96,10 +96,48 @@ describe('NoteFeed', () => {
       'href',
       '/explore/00000000-0000-4000-8000-000000000001',
     );
+    expect(link.closest('section')).toHaveClass('note-feed');
     expect(document.querySelector('.card-title strong')).toBeNull();
     expect(screen.getByText('蓝书作者')).toBeVisible();
     expect(screen.getByLabelText('点赞，当前 0')).toBeVisible();
     expect(screen.queryByText(/正文|分钟前|小时前/)).toBeNull();
+  });
+
+  it('renders mixed video and image cards with a centered play indicator and separate duration', async () => {
+    const videoNote = {
+      ...firstNote,
+      id: '00000000-0000-4000-8000-000000000002',
+      title: '视频笔记',
+      contentType: 'VIDEO',
+      videoDurationMs: 3_000,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        response({ items: [videoNote, firstNote], nextCursor: null }),
+      ) as unknown as typeof fetch,
+    );
+
+    render(
+      <NoteFeed
+        endpoint="/notes/recommendations"
+        label="推荐内容"
+        emptyMessage="没有笔记"
+        errorMessage="加载失败"
+      />,
+    );
+
+    expect(await screen.findByLabelText('视频，时长0:03')).toHaveClass(
+      'video-play-indicator',
+    );
+    expect(screen.getByText('0:03')).toHaveClass('video-duration');
+    expect(document.querySelectorAll('.note-card')).toHaveLength(2);
+    expect(
+      Array.from(document.querySelectorAll<HTMLElement>('.cover-wrap')).map(
+        (cover) => cover.style.aspectRatio,
+      ),
+    ).toEqual(['4 / 3', '4 / 3']);
+    expect(document.querySelector('.video-badge')).toBeNull();
   });
 
   it('keeps existing cards when loading more fails and can retry', async () => {

@@ -2,6 +2,7 @@ import type { ProfileAvatar } from '../_components/avatar';
 
 export type NoteCardData = {
   id: string;
+  contentType: 'IMAGE' | 'VIDEO';
   title: string;
   cover: {
     url: string;
@@ -17,6 +18,7 @@ export type NoteCardData = {
   liked: boolean;
   canLike: boolean;
   views: number;
+  videoDurationMs: number | null;
 };
 
 export type NotePageData = {
@@ -26,6 +28,7 @@ export type NotePageData = {
 
 export type NoteDetailData = {
   id: string;
+  contentType: 'IMAGE' | 'VIDEO';
   title: string;
   content: string;
   createdAt: string;
@@ -40,6 +43,13 @@ export type NoteDetailData = {
     width: number;
     height: number;
   }>;
+  video: {
+    url: string;
+    posterUrl: string;
+    width: number;
+    height: number;
+    durationMs: number;
+  } | null;
   interactions: {
     likes: number;
     favorites: number;

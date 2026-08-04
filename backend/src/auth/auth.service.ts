@@ -258,6 +258,14 @@ export class AuthService {
     }
   }
 
+  async requireWriteUser(sessionId: string | undefined): Promise<PublicUser> {
+    if (!sessionId) throw this.authenticationRequired();
+    const user = await this.currentUser(sessionId);
+    if (!user) throw this.authenticationRequired();
+    await this.assertWriteAllowed(sessionId);
+    return user;
+  }
+
   private registrationExpired(): ApiException {
     return new ApiException(
       HttpStatus.UNAUTHORIZED,

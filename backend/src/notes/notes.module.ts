@@ -7,6 +7,9 @@ import { MediaModule } from '../media/media.module.js';
 import { RedisModule } from '../redis/redis.module.js';
 import { NotesController } from './notes.controller.js';
 import { NotesService } from './notes.service.js';
+import { VideoPublishingService } from './video-publishing.service.js';
+import { VideoUploadGuard } from './video-upload.guard.js';
+import { VideoUploadReservationService } from './video-upload-reservation.service.js';
 
 @Module({
   imports: [
@@ -17,6 +20,11 @@ import { NotesService } from './notes.service.js';
     RedisModule,
   ],
   controllers: [NotesController],
-  providers: [NotesService],
+  providers: [
+    NotesService,
+    VideoPublishingService,
+    VideoUploadGuard,
+    VideoUploadReservationService,
+  ],
 })
 export class NotesModule {}

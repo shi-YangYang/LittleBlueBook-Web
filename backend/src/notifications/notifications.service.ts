@@ -101,6 +101,7 @@ export class NotificationsService {
           select: {
             id: true,
             title: true,
+            contentType: true,
             images: {
               where: { order: 0 },
               take: 1,
@@ -108,6 +109,13 @@ export class NotificationsService {
                 objectKey: true,
                 width: true,
                 height: true,
+              },
+            },
+            video: {
+              select: {
+                coverObjectKey: true,
+                coverWidth: true,
+                coverHeight: true,
               },
             },
           },
@@ -222,11 +230,17 @@ export class NotificationsService {
     note: {
       id: string;
       title: string;
+      contentType: 'IMAGE' | 'VIDEO';
       images: Array<{
         objectKey: string;
         width: number;
         height: number;
       }>;
+      video: {
+        coverObjectKey: string;
+        coverWidth: number;
+        coverHeight: number;
+      } | null;
     } | null;
     comment: {
       id: string;
@@ -236,7 +250,14 @@ export class NotificationsService {
     } | null;
   }): NotificationItem {
     const actorNickname = notification.actor?.nickname ?? '该用户已注销';
-    const image = notification.note?.images[0];
+    const image =
+      notification.note?.contentType === 'VIDEO' && notification.note.video
+        ? {
+            objectKey: notification.note.video.coverObjectKey,
+            width: notification.note.video.coverWidth,
+            height: notification.note.video.coverHeight,
+          }
+        : notification.note?.images[0];
     return {
       id: notification.id,
       type: notification.type,

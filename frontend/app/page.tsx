@@ -300,6 +300,10 @@ export default function Home() {
     openModal();
   };
 
+  const openVideos = () => {
+    window.location.assign('/videos');
+  };
+
   const openNotifications = () => {
     if (user) {
       window.location.assign('/notifications');
@@ -561,9 +565,11 @@ export default function Home() {
               onClick={
                 label === '发布'
                   ? openPublish
-                  : index === 0
-                    ? undefined
-                    : showComingSoon
+                  : label === '视频'
+                    ? openVideos
+                    : index === 0
+                      ? undefined
+                      : showComingSoon
               }
             >
               <Icon name={icon} />
@@ -624,7 +630,7 @@ export default function Home() {
         </nav>
       </aside>
 
-      <main className="content-shell">
+      <main className="content-shell home-content-shell">
         <header className="topbar">
           <SearchTrigger />
           <div className="top-actions">

@@ -329,6 +329,28 @@ describe('PublishPage', () => {
     expect(navigation.push).not.toHaveBeenCalled();
   });
 
+  it('restores focus to the mode trigger after closing the media reset dialog', async () => {
+    render(<PublishPage />);
+    await screen.findByRole('heading', { name: '发布图文笔记' });
+    fireEvent.change(screen.getByLabelText('选择笔记图片'), {
+      target: { files: [imageFile('draft.png')] },
+    });
+
+    const videoMode = screen.getByRole('radio', { name: '发布视频' });
+    fireEvent.click(videoMode);
+    const dialog = await screen.findByRole('alertdialog', {
+      name: '切换发布类型',
+    });
+    expect(dialog).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    await waitFor(() => expect(videoMode).toHaveFocus());
+
+    fireEvent.click(videoMode);
+    await screen.findByRole('alertdialog', { name: '切换发布类型' });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(videoMode).toHaveFocus());
+  });
+
   it('keeps one stateless unload guard across retries and removes it on unmount', async () => {
     const addEventListener = vi.spyOn(window, 'addEventListener');
     const removeEventListener = vi.spyOn(window, 'removeEventListener');

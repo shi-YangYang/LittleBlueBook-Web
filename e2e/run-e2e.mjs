@@ -686,6 +686,17 @@ async function verifyLegacyMigrations() {
     ),
     'utf8',
   );
+  const videoNotesSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260803000300_add_video_notes',
+      'migration.sql',
+    ),
+    'utf8',
+  );
   const channelSeedStart = channelSql.indexOf('INSERT INTO "channels"');
   const channelSeedEnd = channelSql.indexOf(
     '-- Add the relation as nullable',
@@ -868,6 +879,14 @@ async function verifyLegacyMigrations() {
     '-v',
     'ON_ERROR_STOP=1',
     '-c',
+    videoNotesSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
     channelSeedSql,
   );
   await psql(
@@ -916,6 +935,23 @@ async function verifyLegacyMigrations() {
       IF (SELECT count(*) FROM "notes"
           WHERE "id" = '00000000-0000-4000-8000-000000000098') <> 1 THEN
         RAISE EXCEPTION 'SPEC-007 migration changed a legacy note';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM "notes"
+        WHERE "id" = '00000000-0000-4000-8000-000000000098'
+          AND "contentType" = 'IMAGE'
+      ) OR (SELECT count(*) FROM "note_videos") <> 0 THEN
+        RAISE EXCEPTION 'SPEC-013 legacy image-note backfill failed';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE tablename = 'notes'
+          AND indexname = 'notes_contentType_createdAt_id_idx'
+      ) OR NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'note_videos_durationMs_check'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-013 video constraints or indexes missing';
       END IF;
       IF (SELECT count(*) FROM "note_likes") <> 0
          OR (SELECT count(*) FROM "note_favorites") <> 1

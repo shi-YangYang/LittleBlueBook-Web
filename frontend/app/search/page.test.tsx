@@ -32,6 +32,7 @@ function deferred<T>() {
 function note(id: string, title: string) {
   return {
     id,
+    contentType: 'IMAGE',
     title,
     cover: {
       url: `https://media.example.test/${id}.png`,
@@ -46,6 +47,8 @@ function note(id: string, title: string) {
     likes: 0,
     liked: false,
     canLike: true,
+    views: 0,
+    videoDurationMs: null,
   };
 }
 
@@ -73,15 +76,26 @@ describe('SearchPage', () => {
     vi.unstubAllGlobals();
   });
 
-  it('keeps the video skeleton stable for 300ms without a fake request', async () => {
+  it('keeps the real video search skeleton stable for at least 300ms', async () => {
     vi.useFakeTimers();
+    const videoRequest = deferred<ReturnType<typeof response>>();
+    vi.mocked(fetch).mockImplementation((async (
+      input: string | URL | Request,
+    ) => {
+      const url = String(input);
+      if (url.endsWith('/auth/session')) {
+        return response({ authenticated: false, user: null });
+      }
+      if (url.includes('/search/videos?keyword=')) return videoRequest.promise;
+      throw new Error(`Unexpected URL: ${url}`);
+    }) as unknown as typeof fetch);
     render(<SearchPage />);
 
     expect(screen.getByRole('tab', { name: '视频' })).toHaveAttribute(
       'aria-selected',
       'true',
     );
-    expect(screen.getByLabelText('视频搜索结果')).toHaveAttribute(
+    expect(screen.getByLabelText('与蓝书相关的视频')).toHaveAttribute(
       'aria-busy',
       'true',
     );
@@ -94,12 +108,14 @@ describe('SearchPage', () => {
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
+      videoRequest.resolve(response({ items: [], nextCursor: null }));
+      await Promise.resolve();
     });
-    expect(screen.getByText('暂无视频内容')).toBeVisible();
+    expect(screen.getByText('没有找到与“蓝书”相关的视频')).toBeVisible();
     expect(
       screen.queryByRole('navigation', { name: '内容频道' }),
     ).not.toBeInTheDocument();
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('aborts an obsolete keyword request and ignores its late response', async () => {

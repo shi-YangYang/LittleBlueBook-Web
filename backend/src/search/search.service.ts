@@ -12,11 +12,7 @@ import type { NoteCard, NotePage } from '../notes/notes.types.js';
 import { calculateAge } from '../profile/profile-age.js';
 import { publicAvatar } from '../profile/profile-avatar.js';
 import type { ProfileGender } from '../profile/profile.types.js';
-import type {
-  EmptyVideoPage,
-  PublicUserProfile,
-  SearchUserPage,
-} from './search.types.js';
+import type { PublicUserProfile, SearchUserPage } from './search.types.js';
 
 type SearchCursor = {
   rank: number;
@@ -27,6 +23,7 @@ type SearchCursor = {
 
 type NoteSearchRow = {
   id: string;
+  contentType: 'IMAGE' | 'VIDEO';
   title: string;
   createdAt: Date;
   rank: number;
@@ -39,6 +36,7 @@ type NoteSearchRow = {
   likes: bigint | number;
   liked: boolean;
   viewCount: number;
+  videoDurationMs: number | null;
 };
 
 type UserSearchRow = {
@@ -103,10 +101,44 @@ export class SearchService {
     cursorInput: string | undefined,
     limitInput: number,
   ): Promise<NotePage> {
+    return this.searchNotes(
+      'IMAGE',
+      sessionId,
+      keywordInput,
+      cursorInput,
+      limitInput,
+    );
+  }
+
+  async videos(
+    sessionId: string | undefined,
+    keywordInput: string,
+    cursorInput: string | undefined,
+    limitInput: number,
+  ): Promise<NotePage> {
+    return this.searchNotes(
+      'VIDEO',
+      sessionId,
+      keywordInput,
+      cursorInput,
+      limitInput,
+    );
+  }
+
+  private async searchNotes(
+    contentType: 'IMAGE' | 'VIDEO',
+    sessionId: string | undefined,
+    keywordInput: string,
+    cursorInput: string | undefined,
+    limitInput: number,
+  ): Promise<NotePage> {
     const { normalized, terms } = normalizeSearchKeyword(keywordInput);
     const pageSize = this.pageSize(limitInput);
     const viewer = await this.auth.currentUser(sessionId);
-    const scope = this.scope('notes', normalized);
+    const scope = this.scope(
+      contentType === 'IMAGE' ? 'notes' : 'videos',
+      normalized,
+    );
     const cursor = this.decodeCursor(cursorInput, scope);
     const overallConditions = terms.map((term) => {
       const pattern = escapeLike(term);
@@ -145,6 +177,7 @@ export class SearchService {
       WITH ranked AS (
         SELECT
           n."id",
+          n."contentType",
           n."title",
           n."createdAt",
           n."viewCount",
@@ -154,6 +187,7 @@ export class SearchService {
           cover."objectKey",
           cover."width",
           cover."height",
+          cover."durationMs" AS "videoDurationMs",
           CASE
             WHEN lower(n."title") = lower(${normalized}) THEN 1
             WHEN ${Prisma.join(titleConditions, ' AND ')} THEN 2
@@ -172,13 +206,18 @@ export class SearchService {
         JOIN "users" u ON u."id" = n."authorId"
         JOIN "channels" c ON c."id" = n."channelId"
         JOIN LATERAL (
-          SELECT ni."objectKey", ni."width", ni."height"
-          FROM "note_images" ni
-          WHERE ni."noteId" = n."id"
-          ORDER BY ni."order" ASC
-          LIMIT 1
+          (SELECT ni."objectKey", ni."width", ni."height", NULL::integer AS "durationMs"
+           FROM "note_images" ni
+           WHERE ni."noteId" = n."id" AND n."contentType" = 'IMAGE'
+           ORDER BY ni."order" ASC
+           LIMIT 1)
+          UNION ALL
+          SELECT nv."coverObjectKey", nv."coverWidth", nv."coverHeight", nv."durationMs"
+          FROM "note_videos" nv
+          WHERE nv."noteId" = n."id" AND n."contentType" = 'VIDEO'
         ) cover ON TRUE
         WHERE u."ageRestrictedAt" IS NULL
+          AND n."contentType" = CAST(${contentType} AS "NoteContentType")
           AND ${Prisma.join(overallConditions, ' AND ')}
       )
       SELECT * FROM ranked
@@ -202,11 +241,6 @@ export class SearchService {
             })
           : null,
     };
-  }
-
-  async videos(keywordInput: string): Promise<EmptyVideoPage> {
-    normalizeSearchKeyword(keywordInput);
-    return { items: [], nextCursor: null };
   }
 
   async users(
@@ -434,6 +468,7 @@ export class SearchService {
       take: pageSize + 1,
       select: {
         id: true,
+        contentType: true,
         title: true,
         createdAt: true,
         viewCount: true,
@@ -444,6 +479,14 @@ export class SearchService {
           where: { order: 0 },
           take: 1,
           select: { objectKey: true, width: true, height: true },
+        },
+        video: {
+          select: {
+            coverObjectKey: true,
+            coverWidth: true,
+            coverHeight: true,
+            durationMs: true,
+          },
         },
         likes: viewer
           ? {
@@ -463,9 +506,19 @@ export class SearchService {
         this.noteCard(
           {
             ...note,
-            objectKey: note.images[0]?.objectKey ?? '',
-            width: note.images[0]?.width ?? 0,
-            height: note.images[0]?.height ?? 0,
+            objectKey:
+              note.contentType === 'VIDEO'
+                ? (note.video?.coverObjectKey ?? '')
+                : (note.images[0]?.objectKey ?? ''),
+            width:
+              note.contentType === 'VIDEO'
+                ? (note.video?.coverWidth ?? 0)
+                : (note.images[0]?.width ?? 0),
+            height:
+              note.contentType === 'VIDEO'
+                ? (note.video?.coverHeight ?? 0)
+                : (note.images[0]?.height ?? 0),
+            videoDurationMs: note.video?.durationMs ?? null,
             authorId: note.author.id,
             nickname: note.author.nickname,
             avatarObjectKey: note.author.avatarObjectKey,
@@ -499,6 +552,7 @@ export class SearchService {
     }
     return {
       id: row.id,
+      contentType: row.contentType,
       title: row.title,
       cover: {
         url: this.media.publicUrl(row.objectKey),
@@ -514,6 +568,7 @@ export class SearchService {
       liked: Boolean(row.liked),
       canLike: viewerId !== row.authorId,
       views: row.viewCount,
+      videoDurationMs: row.videoDurationMs,
     };
   }
 
@@ -529,7 +584,10 @@ export class SearchService {
     return parsed;
   }
 
-  private scope(kind: 'notes' | 'users', normalized: string): string {
+  private scope(
+    kind: 'notes' | 'videos' | 'users',
+    normalized: string,
+  ): string {
     return `search:${kind}:${createHash('sha256').update(normalized).digest('base64url').slice(0, 20)}`;
   }
 

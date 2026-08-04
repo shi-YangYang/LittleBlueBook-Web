@@ -24,7 +24,7 @@ const API_BASE_URL =
 
 const menuItems = [
   { icon: 'discover', label: '发现', href: '/' },
-  { icon: 'video', label: '视频' },
+  { icon: 'video', label: '视频', href: '/videos' },
   { icon: 'live', label: '直播' },
   { icon: 'publish', label: '发布', href: '/publish' },
 ] as const;

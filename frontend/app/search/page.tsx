@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -31,42 +30,6 @@ const tabs: Array<{ id: SearchType; label: string }> = [
   { id: 'user', label: '用户' },
 ];
 const MINIMUM_LOADING_MS = 300;
-
-function VideoResults() {
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const timer = window.setTimeout(
-      () => setLoading(false),
-      MINIMUM_LOADING_MS,
-    );
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  if (loading) {
-    return (
-      <section
-        className="feed-state"
-        aria-label="视频搜索结果"
-        aria-busy="true"
-      >
-        <div className="feed-loading-grid" aria-hidden="true">
-          {Array.from({ length: 6 }, (_, index) => (
-            <span key={index} />
-          ))}
-        </div>
-        <span className="sr-only">正在切换到视频搜索结果</span>
-      </section>
-    );
-  }
-
-  return (
-    <section className="search-state" aria-label="视频搜索结果">
-      <Icon name="empty" size={48} />
-      <p>暂无视频内容</p>
-    </section>
-  );
-}
 
 function UserResults({
   keyword,
@@ -266,7 +229,7 @@ function UserResults({
           : `/users/${user.id}`;
         return (
           <article className="search-user-card" key={user.id}>
-            <Link href={destination} aria-label={`查看${user.nickname}的主页`}>
+            <a href={destination} aria-label={`查看${user.nickname}的主页`}>
               <Avatar avatar={user.avatar} className="search-user-avatar" />
               <span className="search-user-copy">
                 <strong>{user.nickname}</strong>
@@ -275,7 +238,7 @@ function UserResults({
                   {user.followers} 粉丝 · {user.notes} 篇笔记
                 </span>
               </span>
-            </Link>
+            </a>
             {!user.viewer.isSelf ? (
               <button
                 className={`follow-action ${user.viewer.following ? 'following' : ''}`}
@@ -455,7 +418,17 @@ function SearchPageContent() {
                 onInteractionMessage={setToast}
               />
             ) : activeType === 'video' ? (
-              <VideoResults key={`videos:${keyword}`} />
+              <NoteFeed
+                key={`videos:${keyword}`}
+                endpoint={`/search/videos?keyword=${encodeURIComponent(keyword)}`}
+                label={`与${keyword}相关的视频`}
+                emptyMessage={`没有找到与“${keyword}”相关的视频`}
+                errorMessage="视频搜索失败，请稍后重试"
+                onAuthenticationRequired={(resume) =>
+                  requestAuthentication(resume)
+                }
+                onInteractionMessage={setToast}
+              />
             ) : (
               <UserResults
                 key={`users:${keyword}`}
