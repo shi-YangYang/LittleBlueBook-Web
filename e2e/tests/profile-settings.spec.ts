@@ -1,10 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import {
-  existsSync,
-  readdirSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 
 import {
   expect,

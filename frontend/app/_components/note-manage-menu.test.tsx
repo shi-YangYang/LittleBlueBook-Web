@@ -133,9 +133,7 @@ describe('NoteManageMenu', () => {
     expect(
       screen.queryByRole('alertdialog', { name: '永久删除笔记' }),
     ).toBeNull();
-    expect(
-      screen.getByText('笔记已被更新，请重新打开删除确认'),
-    ).toBeVisible();
+    expect(screen.getByText('笔记已被更新，请重新打开删除确认')).toBeVisible();
 
     openDelete();
     fireEvent.click(screen.getByRole('button', { name: '确认删除' }));

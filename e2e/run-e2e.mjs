@@ -570,23 +570,11 @@ async function seedUsersAndSessions() {
     ['spec012-pending-session', users[22][0]],
     ['spec012-concurrent-a-session', concurrentLegalUserId],
     ['spec012-concurrent-b-session', concurrentLegalUserId],
-    [
-      'spec014-chromium-author-session',
-      '00000000-0000-4000-8000-000000000126',
-    ],
-    [
-      'spec014-firefox-author-session',
-      '00000000-0000-4000-8000-000000000127',
-    ],
-    [
-      'spec014-webkit-author-session',
-      '00000000-0000-4000-8000-000000000128',
-    ],
+    ['spec014-chromium-author-session', '00000000-0000-4000-8000-000000000126'],
+    ['spec014-firefox-author-session', '00000000-0000-4000-8000-000000000127'],
+    ['spec014-webkit-author-session', '00000000-0000-4000-8000-000000000128'],
     ['spec014-viewer-session', '00000000-0000-4000-8000-000000000129'],
-    [
-      'spec014-following-owner-session',
-      '00000000-0000-4000-8000-000000000130',
-    ],
+    ['spec014-following-owner-session', '00000000-0000-4000-8000-000000000130'],
   ];
   for (const [sessionId, userId] of sessions) {
     const key =

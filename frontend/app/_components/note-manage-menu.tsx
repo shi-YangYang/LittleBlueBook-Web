@@ -25,9 +25,9 @@ export function NoteManageMenu({
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmationVersion, setConfirmationVersion] = useState<
-    number | null
-  >(null);
+  const [confirmationVersion, setConfirmationVersion] = useState<number | null>(
+    null,
+  );
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');

@@ -55,12 +55,12 @@ describe('FollowingDialog', () => {
     expect(skeleton.querySelectorAll('.following-skeleton-row')).toHaveLength(
       4,
     );
-    expect(skeleton.querySelectorAll('.following-skeleton-avatar')).toHaveLength(
-      4,
-    );
-    expect(skeleton.querySelectorAll('.following-skeleton-action')).toHaveLength(
-      4,
-    );
+    expect(
+      skeleton.querySelectorAll('.following-skeleton-avatar'),
+    ).toHaveLength(4);
+    expect(
+      skeleton.querySelectorAll('.following-skeleton-action'),
+    ).toHaveLength(4);
 
     resolveRequest(response({ items: [], nextCursor: null }));
     expect(await screen.findByText('还没有关注任何人')).toBeVisible();

@@ -348,10 +348,9 @@ test('invalidates an open delete confirmation after a concurrent edit', async ({
   });
   await expect(confirmation).toBeVisible();
 
-  const editableResponse = await request.get(
-    `${apiUrl}/notes/${noteId}/edit`,
-    { headers: cookie(author.session) },
-  );
+  const editableResponse = await request.get(`${apiUrl}/notes/${noteId}/edit`, {
+    headers: cookie(author.session),
+  });
   const editable = (await editableResponse.json()).data as {
     contentVersion: number;
     images: Array<{ id: string }>;
@@ -408,10 +407,9 @@ test('turns a stale detail into the deleted state after an interaction', async (
   await page.goto(`/explore/${noteId}`);
   await expect(page.getByLabel(/收藏，当前/)).toBeVisible();
 
-  const editableResponse = await request.get(
-    `${apiUrl}/notes/${noteId}/edit`,
-    { headers: cookie(author.session) },
-  );
+  const editableResponse = await request.get(`${apiUrl}/notes/${noteId}/edit`, {
+    headers: cookie(author.session),
+  });
   const contentVersion = (await editableResponse.json()).data.contentVersion;
   const deleted = await request.delete(`${apiUrl}/notes/${noteId}`, {
     headers: cookie(author.session),
@@ -498,9 +496,7 @@ test('keeps management and following dialogs keyboard-safe across browsers', asy
   await page.keyboard.press('Escape');
   await expect(unfollowDialog).toBeHidden();
   await expect(unfollowTrigger).toBeFocused();
-  await followingDialog
-    .getByRole('button', { name: '关闭关注列表' })
-    .click();
+  await followingDialog.getByRole('button', { name: '关闭关注列表' }).click();
   await expect(followingDialog).toBeHidden();
   await expect(followingTrigger).toBeFocused();
   expect(
@@ -596,10 +592,9 @@ test('paginates only my following and confirms an authoritative unfollow in the 
     testInfo.project.name !== 'chromium-1280',
     'The complete private following modal flow runs once in Chromium.',
   );
-  const targets = Array.from({ length: 21 }, (_, index) => index + 201)
-    .map(
-      (value) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`,
-    );
+  const targets = Array.from({ length: 21 }, (_, index) => index + 201).map(
+    (value) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`,
+  );
   for (const targetId of targets) {
     const response = await request.put(`${apiUrl}/users/${targetId}/follow`, {
       headers: cookie(profileSession),

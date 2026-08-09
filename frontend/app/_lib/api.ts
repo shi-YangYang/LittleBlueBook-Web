@@ -27,7 +27,9 @@ const SESSION_RETRY_DELAYS_MS = [100, 250] as const;
 
 function waitForRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) {
-    return Promise.reject(new DOMException('The operation was aborted', 'AbortError'));
+    return Promise.reject(
+      new DOMException('The operation was aborted', 'AbortError'),
+    );
   }
 
   return new Promise((resolve, reject) => {
@@ -104,9 +106,7 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const method = init?.method?.toUpperCase() ?? 'GET';
   const retryDelays =
-    path === '/auth/session' && method === 'GET'
-      ? SESSION_RETRY_DELAYS_MS
-      : [];
+    path === '/auth/session' && method === 'GET' ? SESSION_RETRY_DELAYS_MS : [];
 
   for (let attempt = 0; ; attempt += 1) {
     try {

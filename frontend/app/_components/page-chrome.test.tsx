@@ -43,9 +43,7 @@ describe('PageSidebar session entry', () => {
 
   it('shows the login action after the session is confirmed anonymous', () => {
     act(() => clearAuthenticatedSession());
-    render(
-      <PageSidebar user={null} onLogin={vi.fn()} onToast={vi.fn()} />,
-    );
+    render(<PageSidebar user={null} onLogin={vi.fn()} onToast={vi.fn()} />);
 
     expect(screen.getByRole('button', { name: '登录' })).toBeInTheDocument();
   });

@@ -185,13 +185,9 @@ async function traverseHistory(
 
 async function expectHistoryLength(page: Page, expected: number) {
   await expect
-    .poll(
-      () =>
-        page
-          .evaluate(() => window.history.length)
-          .catch(() => null),
-      { timeout: 5_000 },
-    )
+    .poll(() => page.evaluate(() => window.history.length).catch(() => null), {
+      timeout: 5_000,
+    })
     .toBe(expected);
 }
 
@@ -605,10 +601,8 @@ test('keeps the publish layout usable at every configured desktop viewport', asy
     (element) => element.getBoundingClientRect().bottom,
   );
   expect(lastPreviewBottom).toBeLessThanOrEqual(
-    Math.min(
-      mediaPanelBottom,
-      await page.evaluate(() => window.innerHeight),
-    ) + 1,
+    Math.min(mediaPanelBottom, await page.evaluate(() => window.innerHeight)) +
+      1,
   );
 });
 
