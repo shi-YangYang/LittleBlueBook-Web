@@ -7,6 +7,7 @@ export type RelationshipResult = {
 
 export type FollowResult = {
   following: boolean;
+  followingCount: number;
 };
 
 export type CommentAuthor = {

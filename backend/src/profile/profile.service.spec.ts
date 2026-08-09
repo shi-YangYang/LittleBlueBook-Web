@@ -42,6 +42,9 @@ describe('ProfileService', () => {
       {
         publicUrl: jest.fn((key: string) => `/media/${key}`),
       } as unknown as MediaStorage,
+      {
+        getOrThrow: jest.fn(() => 'unit-test-secret-at-least-32-characters'),
+      } as never,
     );
 
     await expect(service.current('session-secret')).resolves.toEqual({
@@ -80,6 +83,9 @@ describe('ProfileService', () => {
       prisma as unknown as PrismaService,
       {} as AvatarProcessorService,
       {} as MediaStorage,
+      {
+        getOrThrow: jest.fn(() => 'unit-test-secret-at-least-32-characters'),
+      } as never,
     );
 
     await expect(service.current(undefined)).rejects.toBeInstanceOf(
@@ -89,5 +95,67 @@ describe('ProfileService', () => {
       expect((error as ApiException).getStatus()).toBe(401);
     });
     expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('returns a private stable following page and rejects a tampered cursor', async () => {
+    const auth = {
+      currentUser: jest.fn(async () => ({
+        id: '00000000-0000-4000-8000-000000000001',
+        email: 'private@example.com',
+        nickname: '蓝海',
+      })),
+    };
+    const rows = Array.from({ length: 21 }, (_, index) => ({
+      followedId: `00000000-0000-4000-8000-${String(index + 10).padStart(12, '0')}`,
+      createdAt: new Date(
+        `2026-08-04T10:${String(59 - index).padStart(2, '0')}:00.000Z`,
+      ),
+      followed: {
+        nickname: `蓝友${index}`,
+        littleBlueBookId: String(10_000_000 + index),
+        bio: index === 0 ? '公开简介' : null,
+        avatarObjectKey: null,
+      },
+    }));
+    const prisma = {
+      userFollow: { findMany: jest.fn(async () => rows) },
+    };
+    const service = new ProfileService(
+      auth as unknown as AuthService,
+      prisma as unknown as PrismaService,
+      {} as AvatarProcessorService,
+      { publicUrl: jest.fn() } as unknown as MediaStorage,
+      {
+        getOrThrow: jest.fn(() => 'unit-test-secret-at-least-32-characters'),
+      } as never,
+    );
+
+    const page = await service.following('session-secret', undefined);
+    expect(page.items).toHaveLength(20);
+    expect(page.items[0]).toEqual({
+      id: rows[0]!.followedId,
+      nickname: '蓝友0',
+      littleBlueBookId: '10000000',
+      bio: '公开简介',
+      avatar: { type: 'initial', value: '蓝' },
+    });
+    expect(page.nextCursor).toEqual(expect.any(String));
+    expect(prisma.userFollow.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          followerId: '00000000-0000-4000-8000-000000000001',
+          followed: { ageRestrictedAt: null },
+        },
+        orderBy: [{ createdAt: 'desc' }, { followedId: 'desc' }],
+        take: 21,
+      }),
+    );
+
+    await expect(
+      service.following('session-secret', `${page.nextCursor}tampered`),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'FOLLOWING_CURSOR_INVALID' }),
+    });
+    expect(prisma.userFollow.findMany).toHaveBeenCalledTimes(1);
   });
 });

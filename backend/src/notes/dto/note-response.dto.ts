@@ -24,6 +24,11 @@ class NoteImageResponseDto {
   height!: number;
 }
 
+class NoteManagementResponseDto {
+  @ApiProperty({ type: Number, minimum: 1 })
+  contentVersion!: number;
+}
+
 class NoteCardResponseDto {
   @ApiProperty({ type: String, format: 'uuid' })
   id!: string;
@@ -54,6 +59,13 @@ class NoteCardResponseDto {
 
   @ApiProperty({ type: Number, nullable: true, minimum: 1000 })
   videoDurationMs!: number | null;
+
+  @ApiProperty({
+    type: () => NoteManagementResponseDto,
+    required: false,
+    description: 'Author-only management data, only returned by the mine feed',
+  })
+  management?: { contentVersion: number };
 }
 
 class NotePageDto {
@@ -146,6 +158,9 @@ class NoteDetailDto {
   @ApiProperty({ type: String, format: 'date-time' })
   createdAt!: string;
 
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  editedAt!: string | null;
+
   @ApiProperty({ type: () => NoteAuthorResponseDto })
   author!: NoteAuthorResponseDto;
 
@@ -173,6 +188,9 @@ class NoteDetailDto {
 
   @ApiProperty({ type: () => NoteViewerResponseDto })
   viewer!: NoteViewerResponseDto;
+
+  @ApiProperty({ type: () => NoteManagementResponseDto, nullable: true })
+  management!: { contentVersion: number } | null;
 }
 
 export class NoteDetailResponseDto {
@@ -191,4 +209,97 @@ class NoteViewResultDto {
 export class NoteViewResponseDto {
   @ApiProperty({ type: () => NoteViewResultDto })
   data!: NoteViewResultDto;
+}
+
+class EditableNoteChannelDto {
+  @ApiProperty({ type: String })
+  code!: string;
+
+  @ApiProperty({ type: String })
+  name!: string;
+
+  @ApiProperty({ type: Boolean })
+  publishable!: boolean;
+}
+
+class EditableNoteImageDto extends NoteImageResponseDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  id!: string;
+}
+
+class EditableNoteVideoDto {
+  @ApiProperty({ type: String, format: 'uri' })
+  url!: string;
+
+  @ApiProperty({ type: String, format: 'uri' })
+  posterUrl!: string;
+
+  @ApiProperty({ type: Number, minimum: 1 })
+  width!: number;
+
+  @ApiProperty({ type: Number, minimum: 1 })
+  height!: number;
+
+  @ApiProperty({ type: Number, minimum: 1000 })
+  durationMs!: number;
+}
+
+class EditableNoteDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ type: String, enum: ['IMAGE', 'VIDEO'] })
+  contentType!: 'IMAGE' | 'VIDEO';
+
+  @ApiProperty({ type: String, minLength: 1, maxLength: 50 })
+  title!: string;
+
+  @ApiProperty({ type: String, minLength: 1, maxLength: 2000 })
+  content!: string;
+
+  @ApiProperty({ type: Number, minimum: 1 })
+  contentVersion!: number;
+
+  @ApiProperty({ type: () => EditableNoteChannelDto })
+  channel!: EditableNoteChannelDto;
+
+  @ApiProperty({ type: () => EditableNoteImageDto, isArray: true })
+  images!: EditableNoteImageDto[];
+
+  @ApiProperty({ type: () => EditableNoteVideoDto, nullable: true })
+  video!: EditableNoteVideoDto | null;
+}
+
+export class EditableNoteResponseDto {
+  @ApiProperty({ type: () => EditableNoteDto })
+  data!: EditableNoteDto;
+}
+
+class NoteMutationResultDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ type: Number, minimum: 2 })
+  contentVersion!: number;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  editedAt!: string;
+}
+
+export class NoteMutationResponseDto {
+  @ApiProperty({ type: () => NoteMutationResultDto })
+  data!: NoteMutationResultDto;
+}
+
+class NoteDeletionResultDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ type: Boolean, enum: [true] })
+  deleted!: true;
+}
+
+export class NoteDeletionResponseDto {
+  @ApiProperty({ type: () => NoteDeletionResultDto })
+  data!: NoteDeletionResultDto;
 }

@@ -20,6 +20,8 @@ import { MoreMenu } from './_components/more-menu';
 import type { PublicChannel, PublicChannelList } from './_lib/channels';
 import { lockDocumentScroll } from './_lib/document-scroll-lock';
 import { requestLegalStatusRefresh } from './_lib/legal-status-events';
+import { apiRequest as sessionApiRequest } from './_lib/api';
+import { setAuthenticatedSession } from './_lib/auth-session-state';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3001/api/v1';
@@ -202,12 +204,15 @@ export default function Home() {
     const sessionRequestVersion = authStateVersionRef.current;
     let active = true;
 
-    void apiRequest<SessionResult>('/auth/session')
+    void sessionApiRequest<SessionResult>('/auth/session')
       .then((session) => {
         if (!active || authStateVersionRef.current !== sessionRequestVersion) {
           return;
         }
         setUser(session.authenticated ? session.user : null);
+        if (session.authenticated && session.user) {
+          setAuthenticatedSession(session.user);
+        }
         if (session.registrationExpired) {
           setStep('verify');
           setRegistrationExpiredNotice(true);
@@ -484,6 +489,7 @@ export default function Home() {
       if (result.status === 'authenticated') {
         authStateVersionRef.current += 1;
         setUser(result.user);
+        setAuthenticatedSession(result.user);
         setModalOpen(false);
         setToast('登录成功');
         requestLegalStatusRefresh();
@@ -521,6 +527,7 @@ export default function Home() {
       });
       authStateVersionRef.current += 1;
       setUser(result.user);
+      setAuthenticatedSession(result.user);
       setModalOpen(false);
       setToast('注册成功');
       setEmail('');

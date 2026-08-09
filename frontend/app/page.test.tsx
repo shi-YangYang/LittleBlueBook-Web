@@ -518,6 +518,41 @@ describe('Home', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('retries a transient session failure before showing the authenticated entry', async () => {
+    let sessionAttempts = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/channels')) return channelList();
+        if (url.includes('/notes/recommendations')) return emptyNotes();
+        if (url.endsWith('/auth/session')) {
+          sessionAttempts += 1;
+          if (sessionAttempts === 1) {
+            throw new Error('temporary network failure');
+          }
+          return response({
+            authenticated: true,
+            user: {
+              id: 'user-retried-session',
+              email: 'retried@example.com',
+              nickname: '重试成功',
+            },
+          });
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      }) as unknown as typeof fetch,
+    );
+
+    render(<Home />);
+
+    expect(await screen.findByRole('link', { name: '我' })).toBeInTheDocument();
+    expect(sessionAttempts).toBe(2);
+    expect(
+      screen.queryByRole('button', { name: '登录' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('does not flash the login action while restoring an authenticated session', async () => {
     let resolveSession:
       ((value: JsonResponse | PromiseLike<JsonResponse>) => void) | undefined;

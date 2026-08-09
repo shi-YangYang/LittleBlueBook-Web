@@ -158,28 +158,31 @@ export class InteractionsService {
     });
     if (!target) throw this.userNotFound();
 
-    await this.prisma.$transaction(async (transaction) => {
-      if (following) {
-        const created = await transaction.userFollow.createMany({
-          data: [{ followerId: user.id, followedId }],
-          skipDuplicates: true,
-        });
-        if (created.count === 1) {
-          await transaction.notification.create({
-            data: {
-              type: 'USER_FOLLOWED',
-              recipientId: followedId,
-              actorId: user.id,
-            },
+    const followingCount = await this.prisma.$transaction(
+      async (transaction) => {
+        if (following) {
+          const created = await transaction.userFollow.createMany({
+            data: [{ followerId: user.id, followedId }],
+            skipDuplicates: true,
+          });
+          if (created.count === 1) {
+            await transaction.notification.create({
+              data: {
+                type: 'USER_FOLLOWED',
+                recipientId: followedId,
+                actorId: user.id,
+              },
+            });
+          }
+        } else {
+          await transaction.userFollow.deleteMany({
+            where: { followerId: user.id, followedId },
           });
         }
-      } else {
-        await transaction.userFollow.deleteMany({
-          where: { followerId: user.id, followedId },
-        });
-      }
-    });
-    return { following };
+        return transaction.userFollow.count({ where: { followerId: user.id } });
+      },
+    );
+    return { following, followingCount };
   }
 
   async comments(

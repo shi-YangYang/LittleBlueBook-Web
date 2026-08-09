@@ -43,6 +43,13 @@ export class RelationshipResponseDto {
 export class FollowResultDto {
   @ApiProperty({ type: Boolean, description: 'The final follow state' })
   following!: boolean;
+
+  @ApiProperty({
+    type: Number,
+    minimum: 0,
+    description: 'The authoritative current-user following count',
+  })
+  followingCount!: number;
 }
 
 export class FollowResponseDto {

@@ -19,6 +19,9 @@ export type NoteCardData = {
   canLike: boolean;
   views: number;
   videoDurationMs: number | null;
+  management?: {
+    contentVersion: number;
+  };
 };
 
 export type NotePageData = {
@@ -32,6 +35,7 @@ export type NoteDetailData = {
   title: string;
   content: string;
   createdAt: string;
+  editedAt: string | null;
   author: NoteCardData['author'];
   channel: {
     code: string;
@@ -65,6 +69,9 @@ export type NoteDetailData = {
     canLike: boolean;
     canFollow: boolean;
   };
+  management: {
+    contentVersion: number;
+  } | null;
 };
 
 export type NoteCommentData = {

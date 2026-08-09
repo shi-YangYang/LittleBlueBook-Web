@@ -1,3 +1,8 @@
+import {
+  clearAuthenticatedSession,
+  recordSessionResult,
+} from './auth-session-state';
+
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3001/api/v1';
 
@@ -18,10 +23,34 @@ export class ApiRequestError extends Error {
   }
 }
 
-export async function apiRequest<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
+const SESSION_RETRY_DELAYS_MS = [100, 250] as const;
+
+function waitForRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(new DOMException('The operation was aborted', 'AbortError'));
+  }
+
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      globalThis.clearTimeout(timer);
+      reject(new DOMException('The operation was aborted', 'AbortError'));
+    };
+    const timer = globalThis.setTimeout(() => {
+      signal?.removeEventListener('abort', abort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
+function isRetryableSessionError(error: unknown): boolean {
+  return (
+    (error instanceof Error && error.message === 'NETWORK_ERROR') ||
+    (error instanceof ApiRequestError && error.status >= 500)
+  );
+}
+
+async function requestOnce<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   const isFormData = init?.body instanceof FormData;
 
@@ -67,4 +96,33 @@ export async function apiRequest<T>(
   }
 
   return payload as T;
+}
+
+export async function apiRequest<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const method = init?.method?.toUpperCase() ?? 'GET';
+  const retryDelays =
+    path === '/auth/session' && method === 'GET'
+      ? SESSION_RETRY_DELAYS_MS
+      : [];
+
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const result = await requestOnce<T>(path, init);
+      if (path === '/auth/session' && method === 'GET') {
+        recordSessionResult(result);
+      } else if (path === '/auth/logout' && method === 'POST') {
+        clearAuthenticatedSession();
+      }
+      return result;
+    } catch (error) {
+      const delayMs = retryDelays[attempt];
+      if (delayMs === undefined || !isRetryableSessionError(error)) {
+        throw error;
+      }
+      await waitForRetry(delayMs, init?.signal ?? undefined);
+    }
+  }
 }

@@ -14,6 +14,7 @@ import {
 import { AuthDialog } from '../_components/auth-dialog';
 import { Avatar, type ProfileAvatar } from '../_components/avatar';
 import { Icon } from '../_components/icon';
+import { FollowingDialog } from '../_components/following-dialog';
 import { NoteFeed } from '../_components/note-feed';
 import { NotificationNavItem } from '../_components/notification-nav-item';
 import { SearchTrigger } from '../_components/search-dialog';
@@ -116,6 +117,8 @@ export default function ProfilePage() {
   const [toast, setToast] = useState('');
   const [reloadVersion, setReloadVersion] = useState(0);
   const [authOpen, setAuthOpen] = useState(false);
+  const [followingOpen, setFollowingOpen] = useState(false);
+  const followingButtonRef = useRef<HTMLButtonElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const editProfileLinkRef = useRef<HTMLAnchorElement>(null);
   const logoutButtonRef = useRef<HTMLButtonElement>(null);
@@ -126,6 +129,15 @@ export default function ProfilePage() {
     setProfile(null);
     replaceRoute('/?login=1');
   }, [replaceRoute]);
+
+  useEffect(() => {
+    const message = window.sessionStorage.getItem(
+      'littlebluebook:profile-toast',
+    );
+    if (!message) return;
+    window.sessionStorage.removeItem('littlebluebook:profile-toast');
+    queueMicrotask(() => setToast(message));
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -461,20 +473,27 @@ export default function ProfilePage() {
                     <p className="profile-bio">{profile.bio}</p>
                   ) : null}
 
-                  <dl className="profile-stats" aria-label="个人统计">
+                  <div className="profile-stats" aria-label="个人统计">
                     <div>
-                      <dt>关注</dt>
-                      <dd>{profile.stats.following}</dd>
+                      <button
+                        ref={followingButtonRef}
+                        type="button"
+                        aria-label={`查看我的关注，共 ${profile.stats.following} 人`}
+                        onClick={() => setFollowingOpen(true)}
+                      >
+                        <span>关注</span>
+                        <strong>{profile.stats.following}</strong>
+                      </button>
                     </div>
                     <div>
-                      <dt>粉丝</dt>
-                      <dd>{profile.stats.followers}</dd>
+                      <span>粉丝</span>
+                      <strong>{profile.stats.followers}</strong>
                     </div>
                     <div>
-                      <dt>获赞与收藏</dt>
-                      <dd>{profile.stats.receivedLikesAndFavorites}</dd>
+                      <span>获赞与收藏</span>
+                      <strong>{profile.stats.receivedLikesAndFavorites}</strong>
                     </div>
-                  </dl>
+                  </div>
                   {logoutError ? (
                     <p className="profile-action-error" role="alert">
                       {logoutError}
@@ -584,6 +603,30 @@ export default function ProfilePage() {
           setReloadVersion((version) => version + 1);
         }}
         onToast={setToast}
+      />
+      <FollowingDialog
+        open={followingOpen}
+        onClose={() => {
+          setFollowingOpen(false);
+          window.setTimeout(() => followingButtonRef.current?.focus(), 0);
+        }}
+        onFollowingCountChange={(following) =>
+          setProfile((current) =>
+            current
+              ? {
+                  ...current,
+                  stats: { ...current.stats, following },
+                }
+              : current,
+          )
+        }
+        onAuthenticationRequired={() => {
+          setFollowingOpen(false);
+          pendingInteractionRef.current = async () => {
+            setFollowingOpen(true);
+          };
+          setAuthOpen(true);
+        }}
       />
     </div>
   );

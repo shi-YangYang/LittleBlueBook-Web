@@ -37,6 +37,7 @@ function dependencies() {
     userFollow: {
       createMany: jest.fn(async () => ({ count: 1 })),
       deleteMany: jest.fn(async () => ({ count: 0 })),
+      count: jest.fn(async () => 1),
     },
     noteComment: {
       findMany: jest.fn(

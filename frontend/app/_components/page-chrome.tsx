@@ -2,8 +2,13 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
+import { useEffect } from 'react';
 
 import type { AuthenticatedUser } from './auth-dialog';
+import {
+  setAuthenticatedSession,
+  useAuthSessionState,
+} from '../_lib/auth-session-state';
 import { Avatar } from './avatar';
 import { Icon } from './icon';
 import { NotificationNavItem } from './notification-nav-item';
@@ -31,6 +36,13 @@ export function PageSidebar({
   onLogin,
   onToast,
 }: PageSidebarProps) {
+  const retainedSession = useAuthSessionState();
+  const visibleUser = user ?? retainedSession.user;
+
+  useEffect(() => {
+    if (user) setAuthenticatedSession(user);
+  }, [user]);
+
   return (
     <aside className="sidebar" aria-label="主菜单">
       <Link className="sidebar-logo" href="/" aria-label="返回首页">
@@ -46,7 +58,7 @@ export function PageSidebar({
         {menuItems.map((item) =>
           'href' in item ? (
             item.href === '/publish' ? (
-              user ? (
+              visibleUser ? (
                 <a className="nav-item" href="/publish" key={item.label}>
                   <Icon name={item.icon} />
                   <span>{item.label}</span>
@@ -96,16 +108,16 @@ export function PageSidebar({
           ),
         )}
         <NotificationNavItem
-          authenticated={Boolean(user)}
+          authenticated={Boolean(visibleUser)}
           active={active === 'notifications'}
           onLogin={onLogin}
         />
         <MessageNavItem
-          authenticated={Boolean(user)}
+          authenticated={Boolean(visibleUser)}
           active={active === 'messages'}
           onLogin={onLogin}
         />
-        {user ? (
+        {visibleUser ? (
           <div className="identity-wrap">
             <Link
               className={`identity-button ${active === 'profile' ? 'active' : ''}`}
@@ -115,9 +127,9 @@ export function PageSidebar({
             >
               <Avatar
                 avatar={
-                  user.avatar ?? {
+                  visibleUser.avatar ?? {
                     type: 'initial',
-                    value: Array.from(user.nickname.trim())[0] ?? '蓝',
+                    value: Array.from(visibleUser.nickname.trim())[0] ?? '蓝',
                   }
                 }
                 className="identity-avatar"
@@ -125,6 +137,12 @@ export function PageSidebar({
               <span className="identity-name">我</span>
             </Link>
           </div>
+        ) : retainedSession.status === 'loading' ? (
+          <div
+            className="session-entry-placeholder"
+            aria-hidden="true"
+            data-testid="session-entry-placeholder"
+          />
         ) : (
           <button
             className="login-entry"
@@ -136,7 +154,7 @@ export function PageSidebar({
         )}
       </nav>
       <nav className="secondary-nav" aria-label="其他功能">
-        <MoreMenu authenticated={Boolean(user)} onToast={onToast} />
+        <MoreMenu authenticated={Boolean(visibleUser)} onToast={onToast} />
         <Link href="/about">
           <Icon name="info" />
           <span>关于我们</span>

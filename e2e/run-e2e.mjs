@@ -63,6 +63,10 @@ if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(taskDirectoryName)) {
 }
 const taskTestRoot = path.resolve(repositoryTestRoot, taskDirectoryName);
 const mediaRoot = path.resolve(taskTestRoot, 'media');
+const mediaFailureMarker = path.resolve(
+  taskTestRoot,
+  'media-write-failure.marker',
+);
 const testFrontendRoot = path.resolve(taskTestRoot, 'frontend');
 const testLegalConfigPath = path.resolve(
   taskTestRoot,
@@ -103,6 +107,7 @@ const applicationEnvironment = {
   E2E_LEGAL_CONFIG_PATH: testLegalConfigPath,
   MEDIA_ROOT: mediaRoot,
   MEDIA_PUBLIC_BASE_URL: `${apiUrl}/media`,
+  E2E_MEDIA_FAILURE_MARKER: mediaFailureMarker,
 };
 
 let backendProcess;
@@ -392,6 +397,45 @@ async function seedUsersAndSessions() {
       '年龄受限蓝友',
       '0000000125',
     ],
+    [
+      '00000000-0000-4000-8000-000000000126',
+      'spec014-chromium-author@example.test',
+      '管理铬蓝友',
+      '0000000126',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000127',
+      'spec014-firefox-author@example.test',
+      '管理火蓝友',
+      '0000000127',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000128',
+      'spec014-webkit-author@example.test',
+      '管理织蓝友',
+      '0000000128',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000129',
+      'spec014-viewer@example.test',
+      '管理访客蓝友',
+      '0000000129',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000130',
+      'spec014-following-owner@example.test',
+      '关注管理蓝友',
+      '0000000130',
+    ],
+    ...Array.from({ length: 21 }, (_, index) => {
+      const suffix = index + 201;
+      return [
+        `00000000-0000-4000-8000-${String(suffix).padStart(12, '0')}`,
+        `spec014-target-${suffix}@example.test`,
+        `关注对象${suffix}`,
+        String(suffix).padStart(10, '0'),
+      ];
+    }),
   ];
   const values = users
     .map(
@@ -526,6 +570,23 @@ async function seedUsersAndSessions() {
     ['spec012-pending-session', users[22][0]],
     ['spec012-concurrent-a-session', concurrentLegalUserId],
     ['spec012-concurrent-b-session', concurrentLegalUserId],
+    [
+      'spec014-chromium-author-session',
+      '00000000-0000-4000-8000-000000000126',
+    ],
+    [
+      'spec014-firefox-author-session',
+      '00000000-0000-4000-8000-000000000127',
+    ],
+    [
+      'spec014-webkit-author-session',
+      '00000000-0000-4000-8000-000000000128',
+    ],
+    ['spec014-viewer-session', '00000000-0000-4000-8000-000000000129'],
+    [
+      'spec014-following-owner-session',
+      '00000000-0000-4000-8000-000000000130',
+    ],
   ];
   for (const [sessionId, userId] of sessions) {
     const key =
@@ -693,6 +754,28 @@ async function verifyLegacyMigrations() {
       'prisma',
       'migrations',
       '20260803000300_add_video_notes',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const noteManagementSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260804000100_add_note_management',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const boundedMediaCleanupSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260809000100_bound_media_cleanup_retries',
       'migration.sql',
     ),
     'utf8',
@@ -887,6 +970,22 @@ async function verifyLegacyMigrations() {
     '-v',
     'ON_ERROR_STOP=1',
     '-c',
+    noteManagementSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    boundedMediaCleanupSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
     channelSeedSql,
   );
   await psql(
@@ -952,6 +1051,34 @@ async function verifyLegacyMigrations() {
         WHERE conname = 'note_videos_durationMs_check'
       ) THEN
         RAISE EXCEPTION 'SPEC-013 video constraints or indexes missing';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM "notes"
+        WHERE "id" = '00000000-0000-4000-8000-000000000098'
+          AND "contentVersion" = 1
+          AND "editedAt" IS NULL
+          AND "createdAt" = '2026-07-26T00:00:00.000Z'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-014 legacy note management backfill failed';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'notes_contentVersion_check'
+      ) OR NOT EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE tablename = 'media_cleanup'
+          AND indexname = 'media_cleanup_status_nextAttemptAt_idx'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-014 version constraint or cleanup index missing';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_enum e
+        JOIN pg_type t ON t.oid = e.enumtypid
+        WHERE t.typname = 'MediaCleanupStatus'
+          AND e.enumlabel = 'EXHAUSTED'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-014 bounded media cleanup status missing';
       END IF;
       IF (SELECT count(*) FROM "note_likes") <> 0
          OR (SELECT count(*) FROM "note_favorites") <> 1
@@ -1360,6 +1487,7 @@ async function main() {
         E2E_FRONTEND_URL: frontendUrl,
         E2E_API_URL: apiUrl,
         E2E_MEDIA_ROOT: mediaRoot,
+        E2E_MEDIA_FAILURE_MARKER: mediaFailureMarker,
         PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH ?? '0',
         ...(chromiumPath
           ? { PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: chromiumPath }

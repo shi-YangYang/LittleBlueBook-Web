@@ -52,6 +52,7 @@ function createService(options: { viewerId?: string; changed?: boolean } = {}) {
     prisma as unknown as PrismaService,
     {} as ImageValidatorService,
     {} as MediaStorage,
+    { cleanupQueuedObjects: jest.fn(async () => undefined) } as never,
     {} as RedisService,
     config as unknown as ConfigService<AppEnvironment, true>,
   );

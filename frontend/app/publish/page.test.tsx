@@ -221,6 +221,130 @@ describe('PublishPage', () => {
     ).toHaveLength(1);
   });
 
+  it('preloads and saves an image note edit without creating a second note', async () => {
+    const noteId = '00000000-0000-4000-8000-000000000014';
+    window.history.replaceState({}, '', `/publish?edit=${noteId}`);
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/channels')) return response(channels);
+        if (url.endsWith('/auth/session')) {
+          return response(authenticatedSession());
+        }
+        if (url.endsWith(`/notes/${noteId}/edit`)) {
+          return response({
+            id: noteId,
+            contentType: 'IMAGE',
+            title: '原标题',
+            content: '原正文',
+            contentVersion: 7,
+            channel: { code: 'digital', name: '数码', publishable: true },
+            images: [
+              {
+                id: '00000000-0000-4000-8000-000000000015',
+                url: 'https://media.example.test/original.png',
+                width: 100,
+                height: 120,
+              },
+            ],
+            video: null,
+          });
+        }
+        if (url.endsWith(`/notes/${noteId}`) && init?.method === 'PATCH') {
+          const body = init.body as FormData;
+          expect(body.get('expectedContentVersion')).toBe('7');
+          expect(body.get('contentType')).toBe('IMAGE');
+          expect(body.get('clientRequestId')).toBeNull();
+          expect(body.getAll('images')).toHaveLength(1);
+          expect(JSON.parse(String(body.get('imageOrder')))).toEqual([
+            {
+              kind: 'existing',
+              id: '00000000-0000-4000-8000-000000000015',
+            },
+            { kind: 'new', index: 0 },
+          ]);
+          return response({
+            id: noteId,
+            contentVersion: 8,
+            editedAt: '2026-08-04T12:00:00.000Z',
+          });
+        }
+        return response({});
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+
+    render(<PublishPage />);
+    await screen.findByRole('heading', { name: '编辑图文笔记' });
+    expect(screen.getByLabelText('标题')).toHaveValue('原标题');
+    expect(screen.getByAltText('第1张预览')).toHaveAttribute(
+      'src',
+      'https://media.example.test/original.png',
+    );
+    expect(screen.getByRole('radio', { name: '图文笔记' })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('选择笔记图片'), {
+      target: { files: [imageFile('added.png')] },
+    });
+    fireEvent.change(screen.getByLabelText('标题'), {
+      target: { value: '更新标题' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+
+    await waitFor(() =>
+      expect(navigation.push).toHaveBeenCalledWith(`/explore/${noteId}`),
+    );
+    expect(window.sessionStorage.getItem('littlebluebook:detail-toast')).toBe(
+      '笔记修改已保存',
+    );
+  });
+
+  it('locks an edited video while allowing its cover to be replaced', async () => {
+    const noteId = '00000000-0000-4000-8000-000000000024';
+    window.history.replaceState({}, '', `/publish?edit=${noteId}`);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('/channels')) return response(channels);
+        if (url.endsWith('/auth/session')) {
+          return response(authenticatedSession());
+        }
+        if (url.endsWith(`/notes/${noteId}/edit`)) {
+          return response({
+            id: noteId,
+            contentType: 'VIDEO',
+            title: '视频标题',
+            content: '视频正文',
+            contentVersion: 2,
+            channel: { code: 'digital', name: '数码', publishable: true },
+            images: [],
+            video: {
+              url: 'https://media.example.test/video.mp4',
+              posterUrl: 'https://media.example.test/cover.webp',
+              width: 1280,
+              height: 720,
+              durationMs: 3_000,
+            },
+          });
+        }
+        return response({});
+      }) as unknown as typeof fetch,
+    );
+
+    render(<PublishPage />);
+    await screen.findByRole('heading', { name: '编辑视频笔记' });
+    expect(screen.queryByRole('button', { name: '替换视频' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '移除视频' })).toBeNull();
+    expect(screen.queryByLabelText('选择笔记视频')).toBeNull();
+    expect(screen.getByText(/原视频不可替换；如需更换视频/)).toBeVisible();
+    expect(screen.getByRole('button', { name: '替换封面' })).toBeVisible();
+    expect(screen.getByLabelText('待发布视频预览')).toHaveAttribute(
+      'src',
+      'https://media.example.test/video.mp4',
+    );
+  });
+
   it('keeps the complete form and opens login when publishing returns 401', async () => {
     const fetchMock = vi.fn(
       async (input: string | URL | Request, init?: RequestInit) => {

@@ -1,11 +1,13 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -18,6 +20,7 @@ import {
   ApiBadRequestResponse,
   ApiBody,
   ApiConsumes,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -27,7 +30,10 @@ import {
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import {
+  FileFieldsInterceptor,
+  FilesInterceptor,
+} from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 
 import { SESSION_COOKIE_NAME } from '../auth/auth.constants.js';
@@ -37,9 +43,13 @@ import {
   VIEW_VISITOR_COOKIE_NAME,
 } from '../auth/cookies.js';
 import type { UploadedMemoryFile } from '../media/media.types.js';
+import { DeleteNoteDto, EditNoteDto } from './dto/edit-note.dto.js';
 import { ListNotesDto } from './dto/list-notes.dto.js';
 import {
   NoteDetailResponseDto,
+  EditableNoteResponseDto,
+  NoteDeletionResponseDto,
+  NoteMutationResponseDto,
   NotePageResponseDto,
   NoteViewResponseDto,
   PublishNoteResponseDto,
@@ -54,6 +64,9 @@ import {
 } from './video-upload.guard.js';
 import type {
   NoteDetail,
+  EditableNote,
+  NoteDeletionResult,
+  NoteMutationResult,
   NotePage,
   NoteViewResult,
   PublishResult,
@@ -312,6 +325,127 @@ export class NotesController {
         readCookie(request, SESSION_COOKIE_NAME),
         query.cursor,
         query.limit,
+      ),
+    };
+  }
+
+  @Get(':noteId/edit')
+  @ApiOperation({ summary: 'Load author-only note editing data' })
+  @ApiOkResponse({ type: EditableNoteResponseDto })
+  @ApiNotFoundResponse({ description: 'The note is missing or not owned' })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  async editable(
+    @Req() request: Request,
+    @Param('noteId') noteId: string,
+  ): Promise<{ data: EditableNote }> {
+    return {
+      data: await this.notes.editable(
+        readCookie(request, SESSION_COOKIE_NAME),
+        noteId,
+      ),
+    };
+  }
+
+  @Patch(':noteId')
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'images', maxCount: 9 },
+        { name: 'cover', maxCount: 1 },
+      ],
+      {
+        limits: {
+          files: 9,
+          fileSize: 10 * 1024 * 1024,
+          fields: 6,
+          fieldSize: 24 * 1024,
+        },
+      },
+    ),
+  )
+  @ApiOperation({
+    summary: 'Edit an author-owned note with optimistic locking',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: [
+        'title',
+        'content',
+        'channelCode',
+        'contentType',
+        'expectedContentVersion',
+      ],
+      properties: {
+        title: { type: 'string', minLength: 1, maxLength: 50 },
+        content: { type: 'string', minLength: 1, maxLength: 2000 },
+        channelCode: { type: 'string', pattern: '^[a-z][a-z0-9-]{1,31}$' },
+        contentType: { type: 'string', enum: ['IMAGE', 'VIDEO'] },
+        expectedContentVersion: { type: 'integer', minimum: 1 },
+        imageOrder: {
+          type: 'string',
+          description:
+            'JSON final image order containing author-owned existing ids and new upload indexes',
+        },
+        images: {
+          type: 'array',
+          maxItems: 9,
+          items: { type: 'string', format: 'binary' },
+        },
+        cover: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiOkResponse({ type: NoteMutationResponseDto })
+  @ApiBadRequestResponse({ description: 'Fields or media are invalid' })
+  @ApiConflictResponse({ description: 'NOTE_EDIT_CONFLICT' })
+  @ApiNotFoundResponse({ description: 'The note is missing or not owned' })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  async update(
+    @Req() request: Request,
+    @Param('noteId') noteId: string,
+    @Body() input: EditNoteDto,
+    @UploadedFiles()
+    files:
+      | { images?: UploadedMemoryFile[]; cover?: UploadedMemoryFile[] }
+      | undefined,
+  ): Promise<{ data: NoteMutationResult }> {
+    return {
+      data: await this.notes.update(
+        readCookie(request, SESSION_COOKIE_NAME),
+        noteId,
+        input,
+        files ?? {},
+      ),
+    };
+  }
+
+  @Delete(':noteId')
+  @ApiOperation({ summary: 'Permanently delete an author-owned note' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['expectedContentVersion'],
+      properties: {
+        expectedContentVersion: { type: 'integer', minimum: 1 },
+      },
+    },
+  })
+  @ApiOkResponse({ type: NoteDeletionResponseDto })
+  @ApiConflictResponse({ description: 'NOTE_EDIT_CONFLICT' })
+  @ApiNotFoundResponse({ description: 'The note is missing or not owned' })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  async remove(
+    @Req() request: Request,
+    @Param('noteId') noteId: string,
+    @Body() input: DeleteNoteDto,
+  ): Promise<{ data: NoteDeletionResult }> {
+    return {
+      data: await this.notes.remove(
+        readCookie(request, SESSION_COOKIE_NAME),
+        noteId,
+        input.expectedContentVersion,
       ),
     };
   }

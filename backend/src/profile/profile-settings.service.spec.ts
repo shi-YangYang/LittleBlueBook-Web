@@ -145,6 +145,9 @@ function dependencies(
       prisma as unknown as PrismaService,
       avatarProcessor as unknown as AvatarProcessorService,
       media as unknown as MediaStorage,
+      {
+        getOrThrow: jest.fn(() => 'unit-test-secret-at-least-32-characters'),
+      } as never,
     ),
     prisma,
     transaction,

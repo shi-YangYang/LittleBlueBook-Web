@@ -108,6 +108,36 @@ export class ProfileSettingsUpdateResponseDto {
   data!: ProfileSettingsUpdateDto;
 }
 
+class FollowingUserDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ type: String })
+  nickname!: string;
+
+  @ApiProperty({ type: String, pattern: '^\\d{10}$' })
+  littleBlueBookId!: string;
+
+  @ApiProperty({ type: String, nullable: true, maxLength: 100 })
+  bio!: string | null;
+
+  @ApiProperty({ type: () => ProfileAvatarDto })
+  avatar!: ProfileAvatarDto;
+}
+
+class FollowingPageDto {
+  @ApiProperty({ type: () => FollowingUserDto, isArray: true })
+  items!: FollowingUserDto[];
+
+  @ApiProperty({ type: String, nullable: true })
+  nextCursor!: string | null;
+}
+
+export class FollowingPageResponseDto {
+  @ApiProperty({ type: () => FollowingPageDto })
+  data!: FollowingPageDto;
+}
+
 export class ProfileValidationErrorDetailsDto {
   @ApiProperty({
     type: [String],

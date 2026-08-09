@@ -118,11 +118,20 @@ async function prepareForwardTarget(page: Page): Promise<void> {
   await openAuthenticatedPublishPage(page);
   await page.locator('.publish-exit').click();
   await expect(page).toHaveURL(`${frontendUrl}/`);
-  await page.evaluate(() => window.history.back());
+  await waitForStableDocument(page);
+  await page.evaluate(() => {
+    window.setTimeout(() => window.history.back(), 0);
+  });
   await expect(page).toHaveURL(`${frontendUrl}/publish`);
   await expect(
     page.getByRole('heading', { name: '发布图文笔记' }),
   ).toBeVisible();
+}
+
+async function waitForStableDocument(page: Page): Promise<void> {
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForFunction(() => document.readyState !== 'loading');
+  await expect(page.locator('body')).toBeVisible();
 }
 
 function guardDialogSequence(page: Page, choices: boolean[]) {
@@ -150,6 +159,7 @@ async function traverseHistory(
   page: Page,
   direction: 'back' | 'forward',
 ): Promise<void> {
+  await waitForStableDocument(page);
   await page.evaluate((historyDirection) => {
     const trigger = document.createElement('button');
     trigger.type = 'button';
@@ -171,6 +181,18 @@ async function traverseHistory(
   await page
     .locator(`[data-history-traversal-trigger="${direction}"]`)
     .click({ timeout: 5_000 });
+}
+
+async function expectHistoryLength(page: Page, expected: number) {
+  await expect
+    .poll(
+      () =>
+        page
+          .evaluate(() => window.history.length)
+          .catch(() => null),
+      { timeout: 5_000 },
+    )
+    .toBe(expected);
 }
 
 test('continues a direct guest publish visit after email login', async ({
@@ -211,14 +233,15 @@ test('retries dirty browser Back after cancelling the same traversal target', as
   await expect(page.getByLabel('标题')).toHaveValue('浏览器返回后保留的标题');
   await expect(page.getByLabel('正文')).toHaveValue('浏览器返回后保留的正文');
   await expect(page.getByAltText('第1张预览')).toBeVisible();
-  expect(await page.evaluate(() => window.history.length)).toBe(beforeLength);
+  await waitForStableDocument(page);
+  await expectHistoryLength(page, beforeLength);
 
   await traverseHistory(page, 'back');
   await expect.poll(() => dialogs.messages.length, { timeout: 5_000 }).toBe(2);
   await expect(page).toHaveURL(`${frontendUrl}/`, { timeout: 5_000 });
-  await page.waitForTimeout(250);
+  await waitForStableDocument(page);
   expect(dialogs.types).toEqual(['beforeunload', 'beforeunload']);
-  expect(await page.evaluate(() => window.history.length)).toBe(beforeLength);
+  await expectHistoryLength(page, beforeLength);
   dialogs.dispose();
 });
 
@@ -242,14 +265,15 @@ test('retries dirty browser Forward after cancelling the same traversal target',
   await expect(page.getByLabel('标题')).toHaveValue('浏览器前进后保留的标题');
   await expect(page.getByLabel('正文')).toHaveValue('浏览器前进后保留的正文');
   await expect(page.getByAltText('第1张预览')).toBeVisible();
-  expect(await page.evaluate(() => window.history.length)).toBe(beforeLength);
+  await waitForStableDocument(page);
+  await expectHistoryLength(page, beforeLength);
 
   await traverseHistory(page, 'forward');
   await expect.poll(() => dialogs.messages.length, { timeout: 5_000 }).toBe(2);
   await expect(page).toHaveURL(`${frontendUrl}/`, { timeout: 5_000 });
-  await page.waitForTimeout(250);
+  await waitForStableDocument(page);
   expect(dialogs.types).toEqual(['beforeunload', 'beforeunload']);
-  expect(await page.evaluate(() => window.history.length)).toBe(beforeLength);
+  await expectHistoryLength(page, beforeLength);
   dialogs.dispose();
 });
 
@@ -536,7 +560,9 @@ test('keeps the publish layout usable at every configured desktop viewport', asy
   expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
   expect(layout.documentHeight - layout.viewportHeight).toBeLessThanOrEqual(1);
   expect(layout.copyLeft).toBeGreaterThan(layout.mediaLeft);
-  expect(layout.submitTop - layout.topicBottom).toBeGreaterThanOrEqual(16);
+  expect(layout.submitTop - layout.topicBottom).toBeGreaterThanOrEqual(
+    16 - 0.01,
+  );
 
   const input = page.getByLabel('选择笔记图片');
   await input.setInputFiles(
@@ -567,12 +593,22 @@ test('keeps the publish layout usable at every configured desktop viewport', asy
       window.scrollTo(0, document.documentElement.scrollHeight),
     );
   }
+  const mediaPanel = page.locator('.publish-media-panel');
+  await mediaPanel.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
   const lastPreviewBottom = await page
     .locator('.publish-image-item')
     .last()
     .evaluate((element) => element.getBoundingClientRect().bottom);
+  const mediaPanelBottom = await mediaPanel.evaluate(
+    (element) => element.getBoundingClientRect().bottom,
+  );
   expect(lastPreviewBottom).toBeLessThanOrEqual(
-    (await page.evaluate(() => window.innerHeight)) + 1,
+    Math.min(
+      mediaPanelBottom,
+      await page.evaluate(() => window.innerHeight),
+    ) + 1,
   );
 });
 

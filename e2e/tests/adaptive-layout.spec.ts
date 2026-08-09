@@ -410,6 +410,20 @@ test('keeps detail scrolling internal and restores the feed position on Back', a
       },
     });
   });
+  await page.route(
+    /\/api\/v1\/notes\/[0-9a-f-]+\/comments(?:\?.*)?$/,
+    (route) =>
+      route.fulfill({
+        contentType: 'application/json',
+        json: { data: { items: [], nextCursor: null } },
+      }),
+  );
+  await page.route(/\/api\/v1\/notes\/[0-9a-f-]+\/views$/, (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      json: { data: { counted: true, viewCount: 1 } },
+    }),
+  );
 
   await page.setViewportSize(representativeViewports[0]);
   await page.goto('/');

@@ -46,31 +46,37 @@ enum NoteContentType {
   VIDEO
 }
 
+enum MediaCleanupStatus {
+  READY
+  CLEANING
+  EXHAUSTED
+}
+
 model User {
-  id                    String         @id @default(uuid()) @db.Uuid
-  email                 String         @unique @db.VarChar(320)
-  nickname              String         @db.VarChar(20)
-  littleBlueBookId      String         @unique @db.VarChar(10)
-  gender                Gender         @default(PRIVATE)
-  birthDate             DateTime?      @db.Date
-  showAge               Boolean        @default(false)
-  bio                   String?        @db.VarChar(100)
-  avatarObjectKey       String?        @unique @db.VarChar(64)
-  profileVersion        String         @default(uuid()) @db.Uuid
-  ageRestrictedAt       DateTime?      @db.Timestamptz(3)
-  createdAt             DateTime       @default(now()) @db.Timestamptz(3)
-  updatedAt             DateTime       @updatedAt @db.Timestamptz(3)
-  lastLoginAt           DateTime       @default(now()) @db.Timestamptz(3)
+  id                    String               @id @default(uuid()) @db.Uuid
+  email                 String               @unique @db.VarChar(320)
+  nickname              String               @db.VarChar(20)
+  littleBlueBookId      String               @unique @db.VarChar(10)
+  gender                Gender               @default(PRIVATE)
+  birthDate             DateTime?            @db.Date
+  showAge               Boolean              @default(false)
+  bio                   String?              @db.VarChar(100)
+  avatarObjectKey       String?              @unique @db.VarChar(64)
+  profileVersion        String               @default(uuid()) @db.Uuid
+  ageRestrictedAt       DateTime?            @db.Timestamptz(3)
+  createdAt             DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime             @updatedAt @db.Timestamptz(3)
+  lastLoginAt           DateTime             @default(now()) @db.Timestamptz(3)
   notes                 Note[]
   noteLikes             NoteLike[]
   noteFavorites         NoteFavorite[]
   comments              NoteComment[]
   commentLikes          CommentLike[]
-  replyTargets          NoteComment[]       @relation("ReplyTargetAuthor")
-  following             UserFollow[]   @relation("UserFollowing")
-  followers             UserFollow[]   @relation("UserFollowers")
-  receivedNotifications Notification[] @relation("NotificationRecipient")
-  actedNotifications    Notification[] @relation("NotificationActor")
+  replyTargets          NoteComment[]        @relation("ReplyTargetAuthor")
+  following             UserFollow[]         @relation("UserFollowing")
+  followers             UserFollow[]         @relation("UserFollowers")
+  receivedNotifications Notification[]       @relation("NotificationRecipient")
+  actedNotifications    Notification[]       @relation("NotificationActor")
   avatarCleanupRecords  AvatarCleanup[]
   conversationsAsFirst  DirectConversation[] @relation("ConversationFirstParticipant")
   conversationsAsSecond DirectConversation[] @relation("ConversationSecondParticipant")
@@ -130,18 +136,20 @@ model Channel {
 }
 
 model Note {
-  id              String         @id @default(uuid()) @db.Uuid
-  authorId        String         @db.Uuid
-  channelId       String         @db.Uuid
-  title           String         @db.VarChar(50)
-  content         String         @db.Text
-  clientRequestId String         @db.Uuid
-  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime       @updatedAt @db.Timestamptz(3)
-  viewCount       Int            @default(0)
-  contentType     NoteContentType @default(IMAGE)
-  author          User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
-  channel         Channel        @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  id              String            @id @default(uuid()) @db.Uuid
+  authorId        String            @db.Uuid
+  channelId       String            @db.Uuid
+  title           String            @db.VarChar(50)
+  content         String            @db.Text
+  clientRequestId String            @db.Uuid
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
+  viewCount       Int               @default(0)
+  contentType     NoteContentType   @default(IMAGE)
+  contentVersion  Int               @default(1)
+  editedAt        DateTime?         @db.Timestamptz(3)
+  author          User              @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  channel         Channel           @relation(fields: [channelId], references: [id], onDelete: Restrict)
   images          NoteImage[]
   video           NoteVideo?
   likes           NoteLike[]
@@ -158,6 +166,21 @@ model Note {
   @@index([channelId, contentType, createdAt(sort: Desc), id(sort: Desc)])
   @@index([authorId, contentType, createdAt(sort: Desc), id(sort: Desc)])
   @@map("notes")
+}
+
+model MediaCleanup {
+  id            String             @id @default(uuid()) @db.Uuid
+  objectKey     String             @unique @db.VarChar(64)
+  status        MediaCleanupStatus @default(READY)
+  leaseToken    String?            @db.Uuid
+  attempts      Int                @default(0)
+  nextAttemptAt DateTime           @default(now()) @db.Timestamptz(3)
+  lastErrorCode String?            @db.VarChar(64)
+  createdAt     DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime           @updatedAt @db.Timestamptz(3)
+
+  @@index([status, nextAttemptAt])
+  @@map("media_cleanup")
 }
 
 model NoteLike {
@@ -267,23 +290,23 @@ model NoteImage {
 }
 
 model NoteVideo {
-  id             String  @id @default(uuid()) @db.Uuid
-  noteId         String  @unique @db.Uuid
-  videoObjectKey String  @unique @db.VarChar(64)
-  videoMimeType  String  @db.VarChar(32)
+  id             String   @id @default(uuid()) @db.Uuid
+  noteId         String   @unique @db.Uuid
+  videoObjectKey String   @unique @db.VarChar(64)
+  videoMimeType  String   @db.VarChar(32)
   videoByteSize  Int
   width          Int
   height         Int
   durationMs     Int
-  videoCodec     String  @db.VarChar(16)
-  audioCodec     String? @db.VarChar(16)
-  coverObjectKey String  @unique @db.VarChar(64)
-  coverMimeType  String  @db.VarChar(16)
+  videoCodec     String   @db.VarChar(16)
+  audioCodec     String?  @db.VarChar(16)
+  coverObjectKey String   @unique @db.VarChar(64)
+  coverMimeType  String   @db.VarChar(16)
   coverByteSize  Int
   coverWidth     Int
   coverHeight    Int
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
-  note           Note    @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  note           Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
 
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@map("note_videos")
@@ -310,19 +333,19 @@ model Notification {
 }
 
 model DirectConversation {
-  id                              String          @id @default(uuid()) @db.Uuid
-  firstParticipantId              String          @db.Uuid
-  secondParticipantId             String          @db.Uuid
-  firstParticipantReadMessageId   String?         @db.Uuid
-  firstParticipantReadAt          DateTime?       @db.Timestamptz(3)
-  secondParticipantReadMessageId  String?         @db.Uuid
-  secondParticipantReadAt         DateTime?       @db.Timestamptz(3)
-  lastMessageAt                   DateTime         @db.Timestamptz(3)
-  createdAt                       DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt                       DateTime         @updatedAt @db.Timestamptz(3)
-  firstParticipant                User             @relation("ConversationFirstParticipant", fields: [firstParticipantId], references: [id], onDelete: Restrict)
-  secondParticipant               User             @relation("ConversationSecondParticipant", fields: [secondParticipantId], references: [id], onDelete: Restrict)
-  messages                        DirectMessage[]
+  id                             String          @id @default(uuid()) @db.Uuid
+  firstParticipantId             String          @db.Uuid
+  secondParticipantId            String          @db.Uuid
+  firstParticipantReadMessageId  String?         @db.Uuid
+  firstParticipantReadAt         DateTime?       @db.Timestamptz(3)
+  secondParticipantReadMessageId String?         @db.Uuid
+  secondParticipantReadAt        DateTime?       @db.Timestamptz(3)
+  lastMessageAt                  DateTime        @db.Timestamptz(3)
+  createdAt                      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt                      DateTime        @updatedAt @db.Timestamptz(3)
+  firstParticipant               User            @relation("ConversationFirstParticipant", fields: [firstParticipantId], references: [id], onDelete: Restrict)
+  secondParticipant              User            @relation("ConversationSecondParticipant", fields: [secondParticipantId], references: [id], onDelete: Restrict)
+  messages                       DirectMessage[]
 
   @@unique([firstParticipantId, secondParticipantId])
   @@index([firstParticipantId, lastMessageAt(sort: Desc), id(sort: Desc)])

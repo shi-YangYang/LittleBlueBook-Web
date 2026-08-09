@@ -226,6 +226,12 @@ export function NoteFeed({
           <NoteCard
             key={note.id}
             note={note}
+            onDeleted={(noteId) => {
+              setItems((current) =>
+                current.filter((item) => item.id !== noteId),
+              );
+              onInteractionMessage?.('笔记已删除');
+            }}
             onAuthenticationRequired={onAuthenticationRequired}
             onInteractionError={(message) => {
               setInteractionError(message);

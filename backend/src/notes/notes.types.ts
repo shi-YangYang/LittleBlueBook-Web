@@ -21,6 +21,9 @@ export type NoteCard = {
   canLike: boolean;
   views: number;
   videoDurationMs: number | null;
+  management?: {
+    contentVersion: number;
+  };
 };
 
 export type NotePage = {
@@ -34,6 +37,7 @@ export type NoteDetail = {
   title: string;
   content: string;
   createdAt: string;
+  editedAt: string | null;
   author: NoteAuthor;
   channel: {
     code: string;
@@ -67,6 +71,42 @@ export type NoteDetail = {
     canLike: boolean;
     canFollow: boolean;
   };
+  management: {
+    contentVersion: number;
+  } | null;
+};
+
+export type EditableNote = {
+  id: string;
+  contentType: 'IMAGE' | 'VIDEO';
+  title: string;
+  content: string;
+  contentVersion: number;
+  channel: { code: string; name: string; publishable: boolean };
+  images: Array<{
+    id: string;
+    url: string;
+    width: number;
+    height: number;
+  }>;
+  video: {
+    url: string;
+    posterUrl: string;
+    width: number;
+    height: number;
+    durationMs: number;
+  } | null;
+};
+
+export type NoteMutationResult = {
+  id: string;
+  contentVersion: number;
+  editedAt: string;
+};
+
+export type NoteDeletionResult = {
+  id: string;
+  deleted: true;
 };
 
 export type PublishResult = {

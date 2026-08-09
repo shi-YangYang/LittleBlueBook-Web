@@ -8,6 +8,7 @@ import { apiRequest, ApiRequestError } from '../_lib/api';
 import { markNoteDetailSource, type NoteCardData } from '../_lib/notes';
 import { Icon } from './icon';
 import { Avatar } from './avatar';
+import { NoteManageMenu } from './note-manage-menu';
 
 type NoteCardProps = {
   note: NoteCardData;
@@ -17,6 +18,7 @@ type NoteCardProps = {
     result: { active: boolean; count: number },
   ) => void;
   onInteractionError?: (message: string) => void;
+  onDeleted?: (noteId: string) => void;
 };
 
 const FEED_CARD_COVER_ASPECT_RATIO = '4 / 3';
@@ -26,6 +28,7 @@ export function NoteCard({
   onAuthenticationRequired,
   onLikeChanged,
   onInteractionError,
+  onDeleted,
 }: NoteCardProps) {
   const [liked, setLiked] = useState(note.liked);
   const [likes, setLikes] = useState(note.likes);
@@ -77,6 +80,13 @@ export function NoteCard({
 
   return (
     <article className="note-card" data-note-id={note.id}>
+      {note.management ? (
+        <NoteManageMenu
+          noteId={note.id}
+          contentVersion={note.management.contentVersion}
+          onDeleted={onDeleted}
+        />
+      ) : null}
       <Link
         className="card-action"
         href={`/explore/${note.id}`}

@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import {
   existsSync,
   readdirSync,
-  renameSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -25,6 +24,7 @@ const fallbackImage = Buffer.from(
   'base64',
 );
 const mediaRoot = process.env.E2E_MEDIA_ROOT;
+const mediaFailureMarker = process.env.E2E_MEDIA_FAILURE_MARKER;
 
 type Avatar = { type: 'initial' | 'image'; value: string };
 
@@ -65,16 +65,15 @@ function mediaFiles(): string[] {
 }
 
 function blockMediaStorage(): () => void {
-  if (!mediaRoot) throw new Error('E2E_MEDIA_ROOT is required');
-  const backup = `${mediaRoot}-storage-failure-backup`;
-  if (existsSync(backup)) {
-    throw new Error('Unexpected media storage failure backup already exists');
+  if (!mediaFailureMarker) {
+    throw new Error('E2E_MEDIA_FAILURE_MARKER is required');
   }
-  renameSync(mediaRoot, backup);
-  writeFileSync(mediaRoot, 'storage intentionally unavailable');
+  if (existsSync(mediaFailureMarker)) {
+    throw new Error('Unexpected media storage failure marker already exists');
+  }
+  writeFileSync(mediaFailureMarker, 'storage intentionally unavailable');
   return () => {
-    unlinkSync(mediaRoot);
-    renameSync(backup, mediaRoot);
+    unlinkSync(mediaFailureMarker);
   };
 }
 
@@ -344,6 +343,7 @@ test('preserves the form and database profile when Chromium media storage fails'
     testInfo.project.name !== 'chromium-1440',
     'The injected media storage failure runs once in Chromium.',
   );
+  await page.route('**/api/v1/media/**', (route) => route.abort());
   await addSession(context, chromiumSession);
   await page.goto('/settings/profile');
   await expect(page.getByRole('heading', { name: '编辑资料' })).toBeVisible();

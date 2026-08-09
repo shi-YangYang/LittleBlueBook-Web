@@ -21,6 +21,11 @@ import { PendingMediaCleanupService } from './pending-media-cleanup.service.js';
       useExisting: LocalMediaStorageService,
     },
   ],
-  exports: [ImageValidatorService, Mp4ValidatorService, MEDIA_STORAGE],
+  exports: [
+    ImageValidatorService,
+    Mp4ValidatorService,
+    MEDIA_STORAGE,
+    PendingMediaCleanupService,
+  ],
 })
 export class MediaModule {}

@@ -217,6 +217,10 @@ class TestPrisma {
   readonly noteFavorite = {
     count: jest.fn(async () => 0),
   };
+
+  readonly mediaCleanup = {
+    findMany: jest.fn(async () => []),
+  };
 }
 
 function cookieValue(

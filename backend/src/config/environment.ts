@@ -35,6 +35,7 @@ const environmentSchema = z
     MEDIA_PUBLIC_BASE_URL: z
       .url()
       .default('http://127.0.0.1:3001/api/v1/media'),
+    E2E_MEDIA_FAILURE_MARKER: z.string().min(1).optional(),
     E2E_TEST_CODE: z
       .string()
       .regex(/^\d{6}$/)
@@ -60,6 +61,13 @@ const environmentSchema = z
         code: 'custom',
         path: ['E2E_TEST_CODE'],
         message: 'is required for memory transport',
+      });
+    }
+    if (value.E2E_MEDIA_FAILURE_MARKER && value.NODE_ENV !== 'test') {
+      context.addIssue({
+        code: 'custom',
+        path: ['E2E_MEDIA_FAILURE_MARKER'],
+        message: 'is allowed only in test',
       });
     }
   });

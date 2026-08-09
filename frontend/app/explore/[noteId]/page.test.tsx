@@ -496,6 +496,43 @@ describe('NoteDetailPage', () => {
     );
   });
 
+  it('replaces a stale detail with the deleted state when an interaction reports NOTE_NOT_FOUND', async () => {
+    const authenticatedNote = {
+      ...note,
+      viewer: { ...note.viewer, authenticated: true },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith(`/notes/${note.id}/views`)) {
+          return response({ counted: true, viewCount: 1 });
+        }
+        if (url.includes('/comments')) return response(emptyComments);
+        if (url.endsWith(`/notes/${note.id}/like`)) {
+          return response(
+            {
+              statusCode: 404,
+              code: 'NOTE_NOT_FOUND',
+              message: '笔记不存在',
+            },
+            404,
+          );
+        }
+        return response(authenticatedNote);
+      }) as unknown as typeof fetch,
+    );
+
+    render(<NoteDetailView noteId={note.id} />);
+    await screen.findByRole('heading', { name: note.title });
+    fireEvent.click(screen.getByLabelText('点赞，当前 0'));
+
+    expect(
+      await screen.findByRole('heading', { name: '笔记不存在或已删除' }),
+    ).toBeVisible();
+    expect(screen.queryByRole('heading', { name: note.title })).toBeNull();
+  });
+
   it('shows a clear public 404 state with homepage recovery', async () => {
     vi.stubGlobal(
       'fetch',
@@ -513,7 +550,7 @@ describe('NoteDetailPage', () => {
     render(<NoteDetailView noteId="missing" />);
 
     expect(
-      await screen.findByRole('heading', { name: '笔记不存在' }),
+      await screen.findByRole('heading', { name: '笔记不存在或已删除' }),
     ).toBeVisible();
     expect(screen.getByRole('link', { name: '返回首页' })).toHaveAttribute(
       'href',

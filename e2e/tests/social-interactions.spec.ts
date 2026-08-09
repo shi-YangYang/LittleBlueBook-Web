@@ -107,8 +107,9 @@ test('persists idempotent two-account interactions and enforces permissions', as
       headers: cookie(viewerSession),
     });
     expect(follow.status()).toBe(200);
-    expect((await follow.json()).data).toEqual({
+    expect((await follow.json()).data).toMatchObject({
       following: expectedFollowing,
+      followingCount: expect.any(Number),
     });
   }
 
@@ -228,8 +229,9 @@ test('persists idempotent two-account interactions and enforces permissions', as
       `${apiUrl}/users/${authorId}/follow`,
       { headers: cookie(viewerSession) },
     );
-    expect((await unfollow.json()).data).toEqual({
+    expect((await unfollow.json()).data).toMatchObject({
       following: expectedActive,
+      followingCount: expect.any(Number),
     });
   }
 });

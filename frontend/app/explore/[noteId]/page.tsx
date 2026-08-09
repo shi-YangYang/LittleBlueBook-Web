@@ -19,6 +19,7 @@ import {
 } from '../../_components/auth-dialog';
 import { Avatar } from '../../_components/avatar';
 import { Icon } from '../../_components/icon';
+import { NoteManageMenu } from '../../_components/note-manage-menu';
 import { apiRequest, ApiRequestError } from '../../_lib/api';
 import { lockDocumentScroll } from '../../_lib/document-scroll-lock';
 import {
@@ -163,6 +164,47 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
   const backNavigationFallbackRef = useRef<number | null>(null);
   const locatedCommentRef = useRef(false);
 
+  const enterDeletedState = useCallback(() => {
+    setLoading(false);
+    setLoadError(false);
+    setNotFound(true);
+    setNote(null);
+    setComments([]);
+    setCommentsError(false);
+    setCommentsMoreError(false);
+    setCommentsCursor(null);
+    setCommenting(false);
+    setReplyTarget(null);
+    setDeleteTarget(null);
+    setAuthOpen(false);
+  }, []);
+
+  const recoverDeletedNote = useCallback(
+    async (error: unknown): Promise<boolean> => {
+      if (!(error instanceof ApiRequestError) || error.status !== 404) {
+        return false;
+      }
+      if (error.payload.code === 'NOTE_NOT_FOUND') {
+        enterDeletedState();
+        return true;
+      }
+      try {
+        await apiRequest<NoteDetailData>(`/notes/${noteId}`);
+        return false;
+      } catch (probeError) {
+        if (
+          probeError instanceof ApiRequestError &&
+          probeError.status === 404
+        ) {
+          enterDeletedState();
+          return true;
+        }
+        return false;
+      }
+    },
+    [enterDeletedState, noteId],
+  );
+
   useEffect(() => {
     return () => {
       if (backNavigationFallbackRef.current !== null) {
@@ -238,9 +280,11 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
             : current,
         );
       })
-      .catch(() => undefined);
+      .catch((error) => {
+        void recoverDeletedNote(error);
+      });
     return () => controller.abort();
-  }, [note?.id, noteId]);
+  }, [note?.id, noteId, recoverDeletedNote]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -273,6 +317,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
           active &&
           !(error instanceof Error && error.name === 'AbortError')
         ) {
+          if (await recoverDeletedNote(error)) return;
           setCommentsError(true);
         }
       } finally {
@@ -283,7 +328,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
       active = false;
       controller.abort();
     };
-  }, [commentsReloadVersion, noteId]);
+  }, [commentsReloadVersion, noteId, recoverDeletedNote]);
 
   useEffect(() => {
     if (commentsLoading || commentsError || locatedCommentRef.current) return;
@@ -361,11 +406,30 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
           window.setTimeout(() => setHighlightCommentId(null), 2200);
         }
       })
-      .catch(() => setToast('评论定位失败，请重试'));
+      .catch(async (error) => {
+        if (await recoverDeletedNote(error)) return;
+        setToast('评论定位失败，请重试');
+      });
     return () => {
       cancelled = true;
     };
-  }, [comments, commentsCursor, commentsError, commentsLoading, noteId]);
+  }, [
+    comments,
+    commentsCursor,
+    commentsError,
+    commentsLoading,
+    noteId,
+    recoverDeletedNote,
+  ]);
+
+  useEffect(() => {
+    const message = window.sessionStorage.getItem(
+      'littlebluebook:detail-toast',
+    );
+    if (!message) return;
+    window.sessionStorage.removeItem('littlebluebook:detail-toast');
+    queueMicrotask(() => setToast(message));
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -551,6 +615,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
       }
     } catch (error) {
       setNote(snapshot);
+      if (await recoverDeletedNote(error)) return;
       if (
         allowAuthentication &&
         error instanceof ApiRequestError &&
@@ -618,7 +683,8 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
             }
           : current,
       );
-    } catch {
+    } catch (error) {
+      if (await recoverDeletedNote(error)) return;
       setCommentsMoreError(true);
     } finally {
       setCommentsLoadingMore(false);
@@ -657,7 +723,8 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
             : comment,
         ),
       );
-    } catch {
+    } catch (error) {
+      if (await recoverDeletedNote(error)) return;
       setReplyErrorIds((current) => new Set(current).add(rootCommentId));
     } finally {
       setReplyLoadingIds((current) => {
@@ -707,6 +774,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
       setComments((current) =>
         updateCommentTree(current, comment.id, () => previous),
       );
+      if (await recoverDeletedNote(error)) return;
       if (
         allowAuthentication &&
         error instanceof ApiRequestError &&
@@ -811,6 +879,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
       setReplyTarget(null);
       setToast(replyTarget ? '回复发布成功' : '评论发布成功');
     } catch (error) {
+      if (await recoverDeletedNote(error)) return;
       if (error instanceof ApiRequestError && error.status === 401) {
         authReturnFocusRef.current = commentContentRef.current;
         requestAuthentication();
@@ -873,6 +942,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
       closeDeleteDialog(true);
       setToast('评论已删除');
     } catch (error) {
+      if (await recoverDeletedNote(error)) return;
       if (error instanceof ApiRequestError && error.status === 401) {
         closeDeleteDialog();
         requestAuthentication();
@@ -913,8 +983,8 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
           height={52}
         />
         <Icon name="empty" size={58} />
-        <h1>笔记不存在</h1>
-        <p>这篇笔记可能不存在或暂时无法访问。</p>
+        <h1>笔记不存在或已删除</h1>
+        <p>这篇笔记不存在、已被删除或暂时无法访问。</p>
         <Link href="/">返回首页</Link>
       </main>
     );
@@ -1184,6 +1254,17 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
                   {note.viewer.followingAuthor ? '已关注' : '关注'}
                 </button>
               ) : null}
+              {note.management ? (
+                <NoteManageMenu
+                  noteId={note.id}
+                  contentVersion={note.management.contentVersion}
+                  placement="detail"
+                  onVersionConflict={() => {
+                    setToast('笔记已被更新，请重新打开删除确认');
+                    setReloadVersion((current) => current + 1);
+                  }}
+                />
+              ) : null}
             </header>
 
             <div className="detail-copy">
@@ -1207,6 +1288,9 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
                 <time dateTime={note.createdAt}>
                   {formatNoteTime(note.createdAt)}
                 </time>
+                {note.editedAt ? (
+                  <span className="detail-edited">· 已编辑</span>
+                ) : null}
                 <span
                   className="detail-view-count"
                   aria-label={`浏览量 ${note.interactions.views}`}

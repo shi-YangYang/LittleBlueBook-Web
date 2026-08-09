@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import {
+  access,
   mkdir,
   readFile,
   readdir,
@@ -46,6 +47,7 @@ export class LocalMediaStorageService
   private readonly temporaryRoot: string;
   private readonly pendingCleanupRoot: string;
   private readonly publicBaseUrl: string;
+  private readonly writeFailureMarker: string | null;
   private readonly activeTemporaryKeys = new Set<string>();
   private readonly activePendingObjectKeys = new Set<string>();
   private cleanupTimer: NodeJS.Timeout | null = null;
@@ -59,6 +61,10 @@ export class LocalMediaStorageService
     this.publicBaseUrl = config
       .getOrThrow('MEDIA_PUBLIC_BASE_URL')
       .replace(/\/+$/, '');
+    const writeFailureMarker = config.get('E2E_MEDIA_FAILURE_MARKER');
+    this.writeFailureMarker = writeFailureMarker
+      ? resolve(writeFailureMarker)
+      : null;
   }
 
   async onModuleInit(): Promise<void> {
@@ -105,6 +111,7 @@ export class LocalMediaStorageService
     if (!objectKey.endsWith(`.${image.extension}`)) {
       throw new Error('Media object key extension mismatch');
     }
+    await this.rejectInjectedWriteFailure();
     await mkdir(this.root, { recursive: true });
     await writeFile(this.resolveObjectPath(objectKey), image.buffer, {
       flag: 'wx',
@@ -325,6 +332,17 @@ export class LocalMediaStorageService
       'code' in error &&
       error.code === 'ENOENT',
     );
+  }
+
+  private async rejectInjectedWriteFailure(): Promise<void> {
+    if (!this.writeFailureMarker) return;
+    try {
+      await access(this.writeFailureMarker);
+    } catch (error) {
+      if (this.isMissing(error)) return;
+      throw error;
+    }
+    throw new Error('Injected media storage write failure');
   }
 
   private async cleanupExpiredTemporaryFiles(): Promise<void> {

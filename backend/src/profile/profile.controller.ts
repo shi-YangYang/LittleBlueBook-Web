@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Inject,
   Patch,
+  Query,
   Req,
   UploadedFile,
   UseInterceptors,
@@ -36,6 +37,7 @@ import {
   ProfileAvatarInvalidErrorResponseDto,
   ProfileAvatarTooLargeErrorResponseDto,
   ProfileBusinessValidationErrorResponseDto,
+  FollowingPageResponseDto,
   ProfileMultipartInvalidErrorResponseDto,
   ProfileSaveFailedErrorResponseDto,
   ProfileSettingsResponseDto,
@@ -44,9 +46,11 @@ import {
   ProfileVersionConflictErrorResponseDto,
 } from './dto/profile-response.dto.js';
 import { UpdateProfileSettingsDto } from './dto/update-profile-settings.dto.js';
+import { ListFollowingDto } from './dto/list-following.dto.js';
 import { ProfileService } from './profile.service.js';
 import type {
   CurrentProfile,
+  FollowingPage,
   PrivateProfileSettings,
   ProfileSettingsUpdateResult,
 } from './profile.types.js';
@@ -101,6 +105,26 @@ export class ProfileController {
     return {
       data: await this.profiles.settings(
         readCookie(request, SESSION_COOKIE_NAME),
+      ),
+    };
+  }
+
+  @Get('me/following')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'List only the current user following privately' })
+  @ApiOkResponse({ type: FollowingPageResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'AUTHENTICATION_REQUIRED',
+    type: ProfileAuthenticationRequiredErrorResponseDto,
+  })
+  async following(
+    @Req() request: Request,
+    @Query() query: ListFollowingDto,
+  ): Promise<{ data: FollowingPage }> {
+    return {
+      data: await this.profiles.following(
+        readCookie(request, SESSION_COOKIE_NAME),
+        query.cursor,
       ),
     };
   }

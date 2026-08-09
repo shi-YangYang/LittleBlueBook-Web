@@ -15,6 +15,7 @@ describe('LocalMediaStorageService video lifecycle', () => {
   );
   const mediaRoot = resolve(taskRoot, 'media');
   const temporaryRoot = resolve(mediaRoot, '.tmp');
+  const writeFailureMarker = resolve(taskRoot, 'media-write-failure.marker');
   let service: LocalMediaStorageService;
 
   beforeEach(async () => {
@@ -22,6 +23,8 @@ describe('LocalMediaStorageService video lifecycle', () => {
     const config = {
       getOrThrow: (key: keyof AppEnvironment) =>
         key === 'MEDIA_ROOT' ? mediaRoot : 'http://127.0.0.1:3001/api/v1/media',
+      get: (key: keyof AppEnvironment) =>
+        key === 'E2E_MEDIA_FAILURE_MARKER' ? writeFailureMarker : undefined,
     } as ConfigService<AppEnvironment, true>;
     service = new LocalMediaStorageService(config);
   });
@@ -116,5 +119,26 @@ describe('LocalMediaStorageService video lifecycle', () => {
     await expect(service.listPendingObjectKeys()).resolves.not.toContain(
       objectKey,
     );
+  });
+
+  it('injects a test-only write failure without moving the media root', async () => {
+    const objectKey = `${'d'.repeat(48)}.webp`;
+    await writeFile(writeFailureMarker, 'storage intentionally unavailable');
+
+    await expect(
+      service.saveAt(objectKey, {
+        buffer: Buffer.from('avatar'),
+        byteSize: 6,
+        width: 1,
+        height: 1,
+        mimeType: 'image/webp',
+        extension: 'webp',
+      }),
+    ).rejects.toThrow('Injected media storage write failure');
+    await expect(access(resolve(mediaRoot, objectKey))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await rm(writeFailureMarker, { force: true });
+    await expect(access(mediaRoot)).resolves.toBeUndefined();
   });
 });

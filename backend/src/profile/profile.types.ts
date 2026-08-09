@@ -40,3 +40,16 @@ export type ProfileSettingsUpdateResult = {
     avatar: ProfileAvatar;
   };
 };
+
+export type FollowingUser = {
+  id: string;
+  nickname: string;
+  littleBlueBookId: string;
+  bio: string | null;
+  avatar: ProfileAvatar;
+};
+
+export type FollowingPage = {
+  items: FollowingUser[];
+  nextCursor: string | null;
+};

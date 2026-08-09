@@ -1,6 +1,8 @@
-import { randomUUID } from 'node:crypto';
+import { Buffer } from 'node:buffer';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 import { AuthService } from '../auth/auth.service.js';
 import { isValidNickname } from '../auth/email.js';
@@ -17,11 +19,13 @@ import type { UpdateProfileSettingsDto } from './dto/update-profile-settings.dto
 import { calculateAge } from './profile-age.js';
 import { publicAvatar } from './profile-avatar.js';
 import type {
+  FollowingPage,
   CurrentProfile,
   PrivateProfileSettings,
   ProfileGender,
   ProfileSettingsUpdateResult,
 } from './profile.types.js';
+import type { AppEnvironment } from '../config/environment.js';
 
 const GENDER_LABELS: Record<Gender, ProfileGender> = {
   MALE: '男',
@@ -55,6 +59,8 @@ export class ProfileService {
     @Inject(AvatarProcessorService)
     private readonly avatarProcessor: AvatarProcessorService,
     @Inject(MEDIA_STORAGE) private readonly media: MediaStorage,
+    @Inject(ConfigService)
+    private readonly config: ConfigService<AppEnvironment, true>,
   ) {}
 
   async current(sessionId: string | undefined): Promise<CurrentProfile> {
@@ -112,6 +118,69 @@ export class ProfileService {
     const user = await this.findSettingsUser(userId);
     if (!user) throw this.authenticationRequired();
     return this.privateSettings(user);
+  }
+
+  async following(
+    sessionId: string | undefined,
+    cursorInput: string | undefined,
+  ): Promise<FollowingPage> {
+    const userId = await this.requireUserId(sessionId);
+    const cursor = this.decodeFollowingCursor(cursorInput, userId);
+    const rows = await this.prisma.userFollow.findMany({
+      where: {
+        followerId: userId,
+        followed: { ageRestrictedAt: null },
+        ...(cursor
+          ? {
+              OR: [
+                { createdAt: { lt: new Date(cursor.createdAt) } },
+                {
+                  createdAt: new Date(cursor.createdAt),
+                  followedId: { lt: cursor.followedId },
+                },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { followedId: 'desc' }],
+      take: 21,
+      select: {
+        followedId: true,
+        createdAt: true,
+        followed: {
+          select: {
+            nickname: true,
+            littleBlueBookId: true,
+            bio: true,
+            avatarObjectKey: true,
+          },
+        },
+      },
+    });
+    const hasMore = rows.length > 20;
+    const pageRows = hasMore ? rows.slice(0, 20) : rows;
+    const last = pageRows.at(-1);
+    return {
+      items: pageRows.map((row) => ({
+        id: row.followedId,
+        nickname: row.followed.nickname,
+        littleBlueBookId: row.followed.littleBlueBookId,
+        bio: row.followed.bio,
+        avatar: publicAvatar(
+          row.followed.nickname,
+          row.followed.avatarObjectKey,
+          this.media,
+        ),
+      })),
+      nextCursor:
+        hasMore && last
+          ? this.encodeFollowingCursor({
+              createdAt: last.createdAt.toISOString(),
+              followedId: last.followedId,
+              userId,
+            })
+          : null,
+    };
   }
 
   async updateSettings(
@@ -539,6 +608,73 @@ export class ProfileService {
     const sessionUser = await this.auth.currentUser(sessionId);
     if (!sessionUser) throw this.authenticationRequired();
     return sessionUser.id;
+  }
+
+  private encodeFollowingCursor(value: {
+    createdAt: string;
+    followedId: string;
+    userId: string;
+  }): string {
+    const payload = Buffer.from(JSON.stringify(value), 'utf8').toString(
+      'base64url',
+    );
+    const signature = createHmac(
+      'sha256',
+      this.config.getOrThrow('AUTH_CODE_HASH_SECRET'),
+    )
+      .update(payload)
+      .digest('base64url');
+    return `${payload}.${signature}`;
+  }
+
+  private decodeFollowingCursor(
+    cursor: string | undefined,
+    userId: string,
+  ): { createdAt: string; followedId: string; userId: string } | null {
+    if (!cursor) return null;
+    try {
+      if (cursor.length > 768) throw new Error('too long');
+      const [payload, signature, extra] = cursor.split('.');
+      if (!payload || !signature || extra) throw new Error('invalid shape');
+      const expected = createHmac(
+        'sha256',
+        this.config.getOrThrow('AUTH_CODE_HASH_SECRET'),
+      )
+        .update(payload)
+        .digest();
+      const supplied = Buffer.from(signature, 'base64url');
+      if (
+        supplied.length !== expected.length ||
+        !timingSafeEqual(supplied, expected)
+      ) {
+        throw new Error('invalid signature');
+      }
+      const parsed = JSON.parse(
+        Buffer.from(payload, 'base64url').toString('utf8'),
+      ) as Partial<{ createdAt: string; followedId: string; userId: string }>;
+      if (
+        parsed.userId !== userId ||
+        typeof parsed.createdAt !== 'string' ||
+        Number.isNaN(Date.parse(parsed.createdAt)) ||
+        typeof parsed.followedId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          parsed.followedId,
+        )
+      ) {
+        throw new Error('invalid payload');
+      }
+      return parsed as {
+        createdAt: string;
+        followedId: string;
+        userId: string;
+      };
+    } catch {
+      throw new ApiException(
+        HttpStatus.BAD_REQUEST,
+        'FOLLOWING_CURSOR_INVALID',
+        '关注列表分页游标无效',
+      );
+    }
   }
 
   private authenticationRequired(): ApiException {

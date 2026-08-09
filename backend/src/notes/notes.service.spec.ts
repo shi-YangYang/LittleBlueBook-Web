@@ -19,7 +19,10 @@ const user = {
 const requestId = '00000000-0000-4000-8000-000000000002';
 
 function dependencies() {
-  const auth = { currentUser: jest.fn(async () => user) };
+  const auth = {
+    currentUser: jest.fn(async () => user),
+    assertWriteAllowed: jest.fn(async () => undefined),
+  };
   const channels = {
     requirePublishable: jest.fn(async (code: string) => ({
       id: '00000000-0000-4000-8001-000000000001',
@@ -43,13 +46,29 @@ function dependencies() {
   const prisma = {
     note: {
       findUnique: jest.fn(async () => null),
+      findFirst: jest.fn(async () => null),
+      updateMany: jest.fn(async () => ({ count: 1 })),
+      delete: jest.fn(async () => ({ id: 'deleted' })),
       create: jest.fn(async () => ({
         id: '00000000-0000-4000-8000-000000000003',
         createdAt: new Date('2026-07-26T12:00:00.000Z'),
       })),
       findMany: jest.fn(async () => []),
     },
+    $transaction: jest.fn(),
+    $queryRaw: jest.fn(),
+    noteImage: {
+      deleteMany: jest.fn(async () => ({ count: 0 })),
+      createMany: jest.fn(async () => ({ count: 0 })),
+    },
+    noteVideo: { update: jest.fn() },
+    mediaCleanup: { createMany: jest.fn(async () => ({ count: 0 })) },
+    notification: { deleteMany: jest.fn(async () => ({ count: 0 })) },
+    noteComment: { updateMany: jest.fn(async () => ({ count: 0 })) },
   };
+  prisma.$transaction.mockImplementation(
+    async (operation: (transaction: unknown) => unknown) => operation(prisma),
+  );
   const validator = {
     validate: jest.fn(async () => [
       {
@@ -83,8 +102,8 @@ function dependencies() {
     finalizeTemporaryVideo: jest.fn(),
     deleteTemporary: jest.fn(),
     preparePendingObject: jest.fn(),
-    completePendingObjects: jest.fn(),
-    deletePendingObjects: jest.fn(),
+    completePendingObjects: jest.fn(async () => undefined),
+    deletePendingObjects: jest.fn(async () => undefined),
     listPendingObjectKeys: jest.fn(),
     info: jest.fn(),
     createReadStream: jest.fn(),
@@ -98,16 +117,18 @@ function dependencies() {
         : 'unit-test-view-secret-at-least-32-characters',
     ),
   };
+  const cleanup = { cleanupQueuedObjects: jest.fn(async () => undefined) };
   const service = new NotesService(
     auth as unknown as AuthService,
     channels as unknown as ChannelsService,
     prisma as unknown as PrismaService,
     validator as unknown as ImageValidatorService,
     media as MediaStorage,
+    cleanup as never,
     redis as unknown as RedisService,
     config as unknown as ConfigService<AppEnvironment, true>,
   );
-  return { service, auth, channels, prisma, validator, media, redis };
+  return { service, auth, channels, prisma, validator, media, cleanup, redis };
 }
 
 describe('NotesService', () => {
@@ -252,6 +273,189 @@ describe('NotesService', () => {
     });
     expect(validator.validate).not.toHaveBeenCalled();
     expect(media.save).not.toHaveBeenCalled();
+  });
+
+  it('enforces the write gate before returning author-only editable data', async () => {
+    const { service, auth, prisma } = dependencies();
+    const noteId = '00000000-0000-4000-8000-000000000009';
+    (auth.assertWriteAllowed as jest.Mock).mockRejectedValueOnce(
+      new ApiException(
+        HttpStatus.FORBIDDEN,
+        'LEGAL_ACCEPTANCE_REQUIRED',
+        '需要重新确认条款',
+      ),
+    );
+
+    await expect(
+      service.editable('session-secret', noteId),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'LEGAL_ACCEPTANCE_REQUIRED',
+      }),
+    });
+    expect(prisma.note.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('rejects a tampered content type before validating or storing edit media', async () => {
+    const { service, prisma, channels, validator, media } = dependencies();
+    const noteId = '00000000-0000-4000-8000-000000000008';
+    (prisma.note.findFirst as jest.Mock).mockResolvedValueOnce({
+      id: noteId,
+      contentType: 'VIDEO',
+      contentVersion: 1,
+      images: [],
+      video: { coverObjectKey: `${'9'.repeat(48)}.webp` },
+    });
+
+    await expect(
+      service.update(
+        'session-secret',
+        noteId,
+        {
+          title: '标题',
+          content: '正文',
+          channelCode: 'digital',
+          contentType: 'IMAGE',
+          expectedContentVersion: 1,
+          imageOrder: '[]',
+        },
+        {},
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'NOTE_TYPE_IMMUTABLE' }),
+    });
+    expect(channels.requirePublishable).not.toHaveBeenCalled();
+    expect(validator.validate).not.toHaveBeenCalled();
+    expect(media.save).not.toHaveBeenCalled();
+  });
+
+  it('edits only the author note with an independent content version and queues removed media', async () => {
+    const { service, prisma, cleanup } = dependencies();
+    const noteId = '00000000-0000-4000-8000-000000000010';
+    const keptId = '00000000-0000-4000-8000-000000000011';
+    const removedId = '00000000-0000-4000-8000-000000000012';
+    const keptKey = `${'b'.repeat(48)}.png`;
+    const removedKey = `${'c'.repeat(48)}.png`;
+    (prisma.note.findFirst as jest.Mock).mockResolvedValueOnce({
+      id: noteId,
+      contentType: 'IMAGE',
+      contentVersion: 4,
+      images: [
+        {
+          id: keptId,
+          objectKey: keptKey,
+          mimeType: 'image/png',
+          byteSize: 5,
+          width: 100,
+          height: 120,
+        },
+        {
+          id: removedId,
+          objectKey: removedKey,
+          mimeType: 'image/png',
+          byteSize: 5,
+          width: 100,
+          height: 120,
+        },
+      ],
+      video: null,
+    });
+
+    await expect(
+      service.update(
+        'session-secret',
+        noteId,
+        {
+          title: ' 更新标题 ',
+          content: ' 更新正文 ',
+          channelCode: 'digital',
+          contentType: 'IMAGE',
+          expectedContentVersion: 4,
+          imageOrder: JSON.stringify([{ kind: 'existing', id: keptId }]),
+        },
+        {},
+      ),
+    ).resolves.toMatchObject({ id: noteId, contentVersion: 5 });
+    expect(prisma.note.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: noteId, authorId: user.id, contentVersion: 4 },
+        data: expect.objectContaining({
+          title: '更新标题',
+          content: '更新正文',
+          contentVersion: { increment: 1 },
+        }),
+      }),
+    );
+    expect(prisma.noteImage.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ objectKey: keptKey, order: 0 })],
+    });
+    expect(prisma.mediaCleanup.createMany).toHaveBeenCalledWith({
+      data: [{ objectKey: removedKey }],
+      skipDuplicates: true,
+    });
+    expect(cleanup.cleanupQueuedObjects).toHaveBeenCalledWith([removedKey]);
+  });
+
+  it('returns a stable conflict instead of overwriting a newer edit', async () => {
+    const { service, prisma } = dependencies();
+    const noteId = '00000000-0000-4000-8000-000000000020';
+    (prisma.note.findFirst as jest.Mock)
+      .mockResolvedValueOnce({
+        id: noteId,
+        contentType: 'VIDEO',
+        contentVersion: 2,
+        images: [],
+        video: { coverObjectKey: `${'d'.repeat(48)}.webp` },
+      })
+      .mockResolvedValueOnce({ id: noteId });
+    prisma.note.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      service.update(
+        'session-secret',
+        noteId,
+        {
+          title: '标题',
+          content: '正文',
+          channelCode: 'digital',
+          contentType: 'VIDEO',
+          expectedContentVersion: 1,
+        },
+        {},
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'NOTE_EDIT_CONFLICT' }),
+    });
+    expect(prisma.noteVideo.update).not.toHaveBeenCalled();
+  });
+
+  it('permanently deletes the locked author note and queues all media after the transaction', async () => {
+    const { service, prisma, cleanup } = dependencies();
+    const noteId = '00000000-0000-4000-8000-000000000030';
+    const imageKey = `${'e'.repeat(48)}.png`;
+    const videoKey = `${'f'.repeat(48)}.mp4`;
+    const coverKey = `${'1'.repeat(48)}.webp`;
+    prisma.$queryRaw.mockResolvedValueOnce([
+      { authorId: user.id, contentVersion: 3 },
+    ]);
+    (prisma.note.findUnique as jest.Mock).mockResolvedValueOnce({
+      images: [{ objectKey: imageKey }],
+      video: { videoObjectKey: videoKey, coverObjectKey: coverKey },
+    });
+    prisma.note.delete.mockResolvedValueOnce({ id: noteId });
+
+    await expect(service.remove('session-secret', noteId, 3)).resolves.toEqual({
+      id: noteId,
+      deleted: true,
+    });
+    expect(prisma.notification.deleteMany).toHaveBeenCalled();
+    expect(prisma.noteComment.updateMany).toHaveBeenCalled();
+    expect(prisma.note.delete).toHaveBeenCalledWith({ where: { id: noteId } });
+    expect(cleanup.cleanupQueuedObjects).toHaveBeenCalledWith([
+      imageKey,
+      videoKey,
+      coverKey,
+    ]);
   });
 
   it('returns a minimal stable card page and an opaque next cursor', async () => {
