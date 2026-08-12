@@ -212,7 +212,12 @@ test('delivers, paginates, reads and navigates transactional interaction notific
     `${apiUrl}/notes/${noteId}/comments/${commentIds.at(-1)!}`,
     { headers: cookie(authorSession) },
   );
-  expect(deleteComment.status()).toBe(200);
+  expect(deleteComment.status()).toBe(403);
+  const ownerDelete = await request.delete(
+    `${apiUrl}/notes/${noteId}/comments/${commentIds.at(-1)!}`,
+    { headers: cookie(viewerSession) },
+  );
+  expect(ownerDelete.status()).toBe(200);
 
   await addSession(context, authorSession);
   await page.setViewportSize({ width: 960, height: 600 });

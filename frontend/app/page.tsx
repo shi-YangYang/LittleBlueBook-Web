@@ -20,11 +20,13 @@ import { MoreMenu } from './_components/more-menu';
 import type { PublicChannel, PublicChannelList } from './_lib/channels';
 import { lockDocumentScroll } from './_lib/document-scroll-lock';
 import { requestLegalStatusRefresh } from './_lib/legal-status-events';
-import { apiRequest as sessionApiRequest } from './_lib/api';
+import {
+  apiRequest,
+  ApiRequestError,
+  type ApiErrorPayload,
+} from './_lib/api';
 import { setAuthenticatedSession } from './_lib/auth-session-state';
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3001/api/v1';
 const SESSION_ENTRY_GRACE_MS = 250;
 
 type User = {
@@ -32,14 +34,6 @@ type User = {
   email: string;
   nickname: string;
   avatar: ProfileAvatar;
-};
-
-type ApiErrorPayload = {
-  code?: string;
-  message?: string;
-  details?: {
-    remainingAttempts?: number;
-  };
 };
 
 type ModalStep = 'verify' | 'register';
@@ -63,52 +57,15 @@ const menuItems = [
   ['publish', '发布'],
 ] as const;
 
-async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response;
-
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      ...init,
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        ...init?.headers,
-      },
-    });
-  } catch {
-    throw new Error('NETWORK_ERROR');
-  }
-
-  const payload = (await response.json().catch(() => ({}))) as
-    ({ data?: T } & Record<string, unknown>) | ApiErrorPayload;
-
-  if (!response.ok) {
-    const apiError = payload as ApiErrorPayload;
-    const error = new Error(apiError.code ?? 'UNKNOWN_ERROR') as Error & {
-      payload?: ApiErrorPayload;
-    };
-    error.payload = apiError;
-    throw error;
-  }
-
-  if (
-    payload &&
-    typeof payload === 'object' &&
-    'data' in payload &&
-    payload.data !== undefined
-  ) {
-    return payload.data;
-  }
-
-  return payload as T;
-}
-
 function getErrorMessage(error: unknown): string {
   if (!(error instanceof Error)) {
     return '网络异常，请稍后重试';
   }
 
-  const payload = (error as Error & { payload?: ApiErrorPayload }).payload;
+  const payload =
+    error instanceof ApiRequestError
+      ? error.payload
+      : ({} as ApiErrorPayload);
   const remainingAttempts = payload?.details?.remainingAttempts;
 
   switch (error.message) {
@@ -204,7 +161,7 @@ export default function Home() {
     const sessionRequestVersion = authStateVersionRef.current;
     let active = true;
 
-    void sessionApiRequest<SessionResult>('/auth/session')
+    void apiRequest<SessionResult>('/auth/session')
       .then((session) => {
         if (!active || authStateVersionRef.current !== sessionRequestVersion) {
           return;

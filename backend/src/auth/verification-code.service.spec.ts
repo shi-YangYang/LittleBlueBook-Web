@@ -204,16 +204,25 @@ describe('VerificationCodeService', () => {
     expect(redis.values.size).toBe(0);
   });
 
-  it('enforces the 60-second email cooldown', async () => {
-    const { service } = createService();
+  it('treats a repeated request with an active code as a successful replay', async () => {
+    const { service, sent } = createService();
     await service.requestCode('user@example.com', '127.0.0.1');
 
     await expect(
       service.requestCode('user@example.com', '127.0.0.1'),
+    ).resolves.toBeUndefined();
+    expect(sent).toHaveLength(1);
+  });
+
+  it('enforces the 60-second cooldown when no active code exists', async () => {
+    const { service, redis } = createService();
+    await service.requestCode('user@example.com', '127.0.0.1');
+    redis.values.clear();
+
+    await expect(
+      service.requestCode('user@example.com', '127.0.0.1'),
     ).rejects.toMatchObject({
-      response: expect.objectContaining({
-        code: 'RATE_LIMITED',
-      }),
+      response: expect.objectContaining({ code: 'RATE_LIMITED' }),
     });
   });
 });

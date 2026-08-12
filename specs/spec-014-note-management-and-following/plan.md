@@ -1,7 +1,7 @@
 # SPEC-014 实施计划
 
 - Spec：`specs/spec-014-note-management-and-following/spec.md`
-- 当前 Spec 状态：Accepting
+- 当前 Spec 状态：Accepted
 - 计划状态：Completed
 - 负责人：协调开发 Agent
 - 实施约束：只有用户确认完整 Spec 后才能创建一个新的单一实施 Agent；数据库、后端、前端、媒体、Docker 和 E2E 必须由同一 Agent 串行完成；实施 Agent 不得创建子 Agent。

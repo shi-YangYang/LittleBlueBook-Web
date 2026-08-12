@@ -24,6 +24,7 @@ export class ApiRequestError extends Error {
 }
 
 const SESSION_RETRY_DELAYS_MS = [100, 250] as const;
+const EMAIL_CODE_REQUEST_RETRY_DELAYS_MS = [150] as const;
 
 function waitForRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) {
@@ -106,7 +107,11 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const method = init?.method?.toUpperCase() ?? 'GET';
   const retryDelays =
-    path === '/auth/session' && method === 'GET' ? SESSION_RETRY_DELAYS_MS : [];
+    path === '/auth/session' && method === 'GET'
+      ? SESSION_RETRY_DELAYS_MS
+      : path === '/auth/email-code/request' && method === 'POST'
+        ? EMAIL_CODE_REQUEST_RETRY_DELAYS_MS
+        : [];
 
   for (let attempt = 0; ; attempt += 1) {
     try {
@@ -119,7 +124,11 @@ export async function apiRequest<T>(
       return result;
     } catch (error) {
       const delayMs = retryDelays[attempt];
-      if (delayMs === undefined || !isRetryableSessionError(error)) {
+      const retryable =
+        path === '/auth/session'
+          ? isRetryableSessionError(error)
+          : error instanceof Error && error.message === 'NETWORK_ERROR';
+      if (delayMs === undefined || !retryable) {
         throw error;
       }
       await waitForRetry(delayMs, init?.signal ?? undefined);

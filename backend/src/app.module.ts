@@ -12,6 +12,7 @@ import { NotificationsModule } from './notifications/notifications.module.js';
 import { NotesModule } from './notes/notes.module.js';
 import { ProfileModule } from './profile/profile.module.js';
 import { SearchModule } from './search/search.module.js';
+import { SafetyModule } from './safety/safety.module.js';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { SearchModule } from './search/search.module.js';
     NotesModule,
     ProfileModule,
     SearchModule,
+    SafetyModule,
   ],
 })
 export class AppModule {}

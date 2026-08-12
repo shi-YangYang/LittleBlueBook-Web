@@ -116,4 +116,43 @@ describe('AuthDialog legal status synchronization', () => {
     expect(legalStatusRefresh).toHaveBeenCalledTimes(1);
     window.removeEventListener(LEGAL_STATUS_REFRESH_EVENT, legalStatusRefresh);
   });
+
+  it('opens legal documents without navigating or clearing the login draft', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/auth/session')) {
+          return response({
+            authenticated: false,
+            user: null,
+            pendingRegistration: false,
+            registrationExpired: false,
+          });
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      }) as unknown as typeof fetch,
+    );
+    const openedWindow = { opener: window };
+    const open = vi
+      .spyOn(window, 'open')
+      .mockReturnValue(openedWindow as unknown as Window);
+
+    render(<AuthDialog open onClose={vi.fn()} onAuthenticated={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('邮箱'), {
+      target: { value: 'draft@example.com' },
+    });
+    fireEvent.click(screen.getByLabelText('同意用户协议与隐私政策'));
+    fireEvent.click(screen.getByRole('link', { name: '《用户协议》' }));
+
+    expect(open).toHaveBeenCalledWith(
+      expect.stringMatching(/\/terms$/),
+      '_blank',
+      'noopener,noreferrer',
+    );
+    expect(openedWindow.opener).toBeNull();
+    expect(screen.getByRole('dialog', { name: '邮箱登录' })).toBeVisible();
+    expect(screen.getByLabelText('邮箱')).toHaveValue('draft@example.com');
+    expect(screen.getByLabelText('同意用户协议与隐私政策')).toBeChecked();
+  });
 });

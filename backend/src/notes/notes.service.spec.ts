@@ -378,7 +378,12 @@ describe('NotesService', () => {
     ).resolves.toMatchObject({ id: noteId, contentVersion: 5 });
     expect(prisma.note.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: noteId, authorId: user.id, contentVersion: 4 },
+        where: {
+          id: noteId,
+          authorId: user.id,
+          contentVersion: 4,
+          moderationStatus: 'VISIBLE',
+        },
         data: expect.objectContaining({
           title: '更新标题',
           content: '更新正文',
@@ -435,9 +440,9 @@ describe('NotesService', () => {
     const imageKey = `${'e'.repeat(48)}.png`;
     const videoKey = `${'f'.repeat(48)}.mp4`;
     const coverKey = `${'1'.repeat(48)}.webp`;
-    prisma.$queryRaw.mockResolvedValueOnce([
-      { authorId: user.id, contentVersion: 3 },
-    ]);
+    prisma.$queryRaw
+      .mockResolvedValueOnce([{ authorId: user.id, contentVersion: 3 }])
+      .mockResolvedValueOnce([]);
     (prisma.note.findUnique as jest.Mock).mockResolvedValueOnce({
       images: [{ objectKey: imageKey }],
       video: { videoObjectKey: videoKey, coverObjectKey: coverKey },

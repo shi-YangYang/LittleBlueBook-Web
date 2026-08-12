@@ -165,8 +165,14 @@ describe('AuthService legal acceptance state', () => {
   function createService(options?: {
     accepted?: boolean;
     restricted?: boolean;
+    status?: 'ACTIVE' | 'SUSPENDED';
+    authVersion?: number;
+    sessionAuthVersion?: number;
   }) {
     let accepted = options?.accepted ?? false;
+    const status = options?.status ?? 'ACTIVE';
+    const authVersion = options?.authVersion ?? 1;
+    const sessionAuthVersion = options?.sessionAuthVersion ?? authVersion;
     const legalAcceptance = {
       createMany: jest.fn(
         async (input: {
@@ -190,11 +196,15 @@ describe('AuthService legal acceptance state', () => {
               ? {
                   id: 'user-id',
                   ageRestrictedAt: options?.restricted ? new Date() : null,
+                  status,
+                  authVersion,
                   legalAcceptances: accepted ? [{ id: 'acceptance-id' }] : [],
                 }
               : {
                   id: 'user-id',
                   ageRestrictedAt: options?.restricted ? new Date() : null,
+                  status,
+                  authVersion,
                 },
         ),
       },
@@ -203,6 +213,7 @@ describe('AuthService legal acceptance state', () => {
     const sessions = {
       read: jest.fn().mockResolvedValue({
         userId: 'user-id',
+        authVersion: sessionAuthVersion,
         createdAt: new Date().toISOString(),
       }),
       delete: jest.fn(),
@@ -217,6 +228,7 @@ describe('AuthService legal acceptance state', () => {
         { publicUrl: jest.fn() } as unknown as MediaStorage,
       ),
       legalAcceptance,
+      sessions,
     };
   }
 
@@ -266,5 +278,34 @@ describe('AuthService legal acceptance state', () => {
     ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'ACCOUNT_AGE_RESTRICTED' }),
     });
+  });
+
+  it('rejects a suspended account before recording legal acceptance', async () => {
+    const { service, legalAcceptance, sessions } = createService({
+      status: 'SUSPENDED',
+    });
+
+    await expect(
+      service.acceptCurrentLegalTerms('suspended-session-id'),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'AUTHENTICATION_REQUIRED' }),
+    });
+    expect(legalAcceptance.createMany).not.toHaveBeenCalled();
+    expect(sessions.delete).toHaveBeenCalledWith('suspended-session-id');
+  });
+
+  it('rejects a stale auth version before recording legal acceptance', async () => {
+    const { service, legalAcceptance, sessions } = createService({
+      authVersion: 2,
+      sessionAuthVersion: 1,
+    });
+
+    await expect(
+      service.acceptCurrentLegalTerms('stale-session-id'),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'AUTHENTICATION_REQUIRED' }),
+    });
+    expect(legalAcceptance.createMany).not.toHaveBeenCalled();
+    expect(sessions.delete).toHaveBeenCalledWith('stale-session-id');
   });
 });

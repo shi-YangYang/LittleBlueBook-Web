@@ -69,6 +69,14 @@ export class AuthService {
       };
     }
 
+    if (existingUser.status === 'SUSPENDED') {
+      throw new ApiException(
+        HttpStatus.UNAUTHORIZED,
+        'ACCOUNT_SUSPENDED',
+        '当前账号已被暂停使用',
+      );
+    }
+
     const user = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.user.update({
         where: { id: existingUser.id },
@@ -83,7 +91,7 @@ export class AuthService {
       );
       return updated;
     });
-    const sessionId = await this.sessions.create(user.id);
+    const sessionId = await this.sessions.create(user.id, user.authVersion);
 
     return {
       status: 'authenticated',
@@ -121,7 +129,7 @@ export class AuthService {
       now,
       registration,
     );
-    const sessionId = await this.sessions.create(user.id);
+    const sessionId = await this.sessions.create(user.id, user.authVersion);
 
     return {
       status: 'authenticated',
@@ -143,7 +151,11 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { id: session.userId },
     });
-    if (!user) {
+    if (
+      !user ||
+      user.status === 'SUSPENDED' ||
+      (user.authVersion ?? 1) !== (session.authVersion ?? 1)
+    ) {
       await this.sessions.delete(sessionId);
       return null;
     }
@@ -182,6 +194,8 @@ export class AuthService {
       select: {
         id: true,
         ageRestrictedAt: true,
+        status: true,
+        authVersion: true,
         legalAcceptances: {
           where: {
             termsVersion: CURRENT_TERMS_VERSION,
@@ -192,7 +206,11 @@ export class AuthService {
         },
       },
     });
-    if (!user) {
+    if (
+      !user ||
+      user.status === 'SUSPENDED' ||
+      (user.authVersion ?? 1) !== (session.authVersion ?? 1)
+    ) {
       await this.sessions.delete(sessionId!);
       return {
         ...LEGAL_DOCUMENTS,
@@ -218,9 +236,21 @@ export class AuthService {
     if (!session) throw this.authenticationRequired();
     const user = await this.prisma.user.findUnique({
       where: { id: session.userId },
-      select: { id: true, ageRestrictedAt: true },
+      select: {
+        id: true,
+        ageRestrictedAt: true,
+        status: true,
+        authVersion: true,
+      },
     });
-    if (!user) throw this.authenticationRequired();
+    if (
+      !user ||
+      user.status !== 'ACTIVE' ||
+      user.authVersion !== session.authVersion
+    ) {
+      await this.sessions.delete(sessionId);
+      throw this.authenticationRequired();
+    }
     if (user.ageRestrictedAt) throw this.ageRestricted();
 
     const challenge: LegalChallenge = {
@@ -392,6 +422,7 @@ export class AuthService {
     email: string;
     nickname: string;
     avatarObjectKey?: string | null;
+    role?: 'USER' | 'ADMIN';
   }): PublicUser {
     return {
       id: user.id,
@@ -402,6 +433,7 @@ export class AuthService {
         user.avatarObjectKey ?? null,
         this.media,
       ),
+      ...(user.role === 'ADMIN' ? { role: 'ADMIN' as const } : {}),
     };
   }
 }

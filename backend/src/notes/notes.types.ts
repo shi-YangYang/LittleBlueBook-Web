@@ -24,6 +24,7 @@ export type NoteCard = {
   management?: {
     contentVersion: number;
   };
+  moderationHidden?: boolean;
 };
 
 export type NotePage = {
@@ -70,10 +71,12 @@ export type NoteDetail = {
     followingAuthor: boolean;
     canLike: boolean;
     canFollow: boolean;
+    canReport: boolean;
   };
   management: {
     contentVersion: number;
   } | null;
+  moderationHidden?: boolean;
 };
 
 export type EditableNote = {

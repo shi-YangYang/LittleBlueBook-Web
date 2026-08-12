@@ -1,13 +1,14 @@
 import { Buffer } from 'node:buffer';
 
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 
 import { AuthService } from '../auth/auth.service.js';
 import { ApiException } from '../common/api-exception.js';
 import { PrismaService } from '../database/prisma.service.js';
-import type { Prisma } from '../generated/prisma/client.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { MEDIA_STORAGE, type MediaStorage } from '../media/media.types.js';
 import { publicAvatar } from '../profile/profile-avatar.js';
+import { SafetyService } from '../safety/safety.service.js';
 import type {
   CommentDeletionResult,
   CommentMutationResult,
@@ -32,11 +33,13 @@ type CommentRecord = {
   rootCommentId: string | null;
   content: string;
   deletedAt: Date | null;
+  moderationStatus: 'VISIBLE' | 'HIDDEN';
   createdAt: Date;
   author: {
     nickname: string;
     avatarObjectKey: string | null;
     ageRestrictedAt: Date | null;
+    status: 'ACTIVE' | 'SUSPENDED';
   };
   replyTo: {
     id: string;
@@ -57,6 +60,7 @@ export class InteractionsService {
     @Inject(AuthService) private readonly auth: AuthService,
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(MEDIA_STORAGE) private readonly media: MediaStorage,
+    @Optional() @Inject(SafetyService) private readonly safety?: SafetyService,
   ) {}
 
   async setLike(
@@ -66,6 +70,7 @@ export class InteractionsService {
   ): Promise<RelationshipResult> {
     const user = await this.requireUser(sessionId);
     const note = await this.requireNote(noteId);
+    await this.safety?.assertNotBlocked(user.id, note.authorId);
     if (note.authorId === user.id) {
       throw new ApiException(
         HttpStatus.CONFLICT,
@@ -75,6 +80,10 @@ export class InteractionsService {
     }
 
     return this.prisma.$transaction(async (transaction) => {
+      await this.assertTransactionNotBlocked(transaction, user.id, [
+        note.authorId,
+      ]);
+      await this.assertTransactionNoteAvailable(transaction, noteId);
       if (active) {
         const created = await transaction.noteLike.createMany({
           data: [{ userId: user.id, noteId }],
@@ -109,8 +118,13 @@ export class InteractionsService {
   ): Promise<RelationshipResult> {
     const user = await this.requireUser(sessionId);
     const note = await this.requireNote(noteId);
+    await this.safety?.assertNotBlocked(user.id, note.authorId);
 
     return this.prisma.$transaction(async (transaction) => {
+      await this.assertTransactionNotBlocked(transaction, user.id, [
+        note.authorId,
+      ]);
+      await this.assertTransactionNoteAvailable(transaction, noteId);
       if (active) {
         const created = await transaction.noteFavorite.createMany({
           data: [{ userId: user.id, noteId }],
@@ -152,15 +166,19 @@ export class InteractionsService {
         '不能关注自己',
       );
     }
-    const target = await this.prisma.user.findUnique({
-      where: { id: followedId },
+    const target = await this.prisma.user.findFirst({
+      where: { id: followedId, status: 'ACTIVE' },
       select: { id: true },
     });
     if (!target) throw this.userNotFound();
+    await this.safety?.assertNotBlocked(user.id, followedId);
 
     const followingCount = await this.prisma.$transaction(
       async (transaction) => {
         if (following) {
+          await this.assertTransactionNotBlocked(transaction, user.id, [
+            followedId,
+          ]);
           const created = await transaction.userFollow.createMany({
             data: [{ followerId: user.id, followedId }],
             skipDuplicates: true,
@@ -193,6 +211,11 @@ export class InteractionsService {
   ): Promise<CommentPage> {
     const note = await this.requireNote(noteId);
     const viewer = await this.auth.currentUser(sessionId);
+    if (viewer) {
+      await this.safety?.assertNotBlocked(viewer.id, note.authorId);
+    }
+    const blockedIds =
+      viewer && this.safety ? await this.safety.blockedIds(viewer.id) : [];
     const pageSize = this.pageSize(limit, 20);
     const cursor = this.decodeCursor(cursorInput, noteId, null, 'older-roots');
     const cursorWhere = cursor
@@ -209,12 +232,30 @@ export class InteractionsService {
 
     const [comments, total] = await Promise.all([
       this.prisma.noteComment.findMany({
-        where: { noteId, rootCommentId: null, ...cursorWhere },
+        where: {
+          noteId,
+          rootCommentId: null,
+          authorId: { notIn: blockedIds },
+          author: { status: 'ACTIVE' },
+          OR: [
+            { moderationStatus: 'VISIBLE' },
+            ...(viewer ? [{ authorId: viewer.id }] : []),
+          ],
+          ...cursorWhere,
+        },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: pageSize + 1,
         select: {
           ...this.commentSelect(viewerLikes),
           replies: {
+            where: {
+              authorId: { notIn: blockedIds },
+              author: { status: 'ACTIVE' as const },
+              OR: [
+                { moderationStatus: 'VISIBLE' as const },
+                ...(viewer ? [{ authorId: viewer.id }] : []),
+              ],
+            },
             orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }],
             take: 4,
             select: this.commentSelect(viewerLikes),
@@ -222,7 +263,13 @@ export class InteractionsService {
         },
       }),
       this.prisma.noteComment.count({
-        where: { noteId, deletedAt: null },
+        where: {
+          noteId,
+          deletedAt: null,
+          moderationStatus: 'VISIBLE',
+          authorId: { notIn: blockedIds },
+          author: { status: 'ACTIVE' },
+        },
       }),
     ]);
     const hasMore = comments.length > pageSize;
@@ -258,12 +305,27 @@ export class InteractionsService {
   ): Promise<CommentPage> {
     const note = await this.requireNote(noteId);
     if (!UUID_PATTERN.test(rootCommentId)) throw this.commentNotFound();
+    const viewer = await this.auth.currentUser(sessionId);
+    if (viewer) {
+      await this.safety?.assertNotBlocked(viewer.id, note.authorId);
+    }
+    const blockedIds =
+      viewer && this.safety ? await this.safety.blockedIds(viewer.id) : [];
     const root = await this.prisma.noteComment.findFirst({
-      where: { id: rootCommentId, noteId, rootCommentId: null },
+      where: {
+        id: rootCommentId,
+        noteId,
+        rootCommentId: null,
+        authorId: { notIn: blockedIds },
+        author: { status: 'ACTIVE' },
+        OR: [
+          { moderationStatus: 'VISIBLE' },
+          ...(viewer ? [{ authorId: viewer.id }] : []),
+        ],
+      },
       select: { id: true },
     });
     if (!root) throw this.commentNotFound();
-    const viewer = await this.auth.currentUser(sessionId);
     const pageSize = this.pageSize(limit, 10);
     const cursor = this.decodeCursor(
       cursorInput,
@@ -284,13 +346,29 @@ export class InteractionsService {
       : false;
     const [items, total] = await Promise.all([
       this.prisma.noteComment.findMany({
-        where: { noteId, rootCommentId, ...cursorWhere },
+        where: {
+          noteId,
+          rootCommentId,
+          authorId: { notIn: blockedIds },
+          author: { status: 'ACTIVE' },
+          OR: [
+            { moderationStatus: 'VISIBLE' },
+            ...(viewer ? [{ authorId: viewer.id }] : []),
+          ],
+          ...cursorWhere,
+        },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         take: pageSize + 1,
         select: this.commentSelect(viewerLikes),
       }),
       this.prisma.noteComment.count({
-        where: { noteId, rootCommentId },
+        where: {
+          noteId,
+          rootCommentId,
+          moderationStatus: 'VISIBLE',
+          authorId: { notIn: blockedIds },
+          author: { status: 'ACTIVE' },
+        },
       }),
     ]);
     const hasMore = items.length > pageSize;
@@ -323,9 +401,14 @@ export class InteractionsService {
   ): Promise<CommentMutationResult> {
     const user = await this.requireUser(sessionId);
     const note = await this.requireNote(noteId);
+    await this.safety?.assertNotBlocked(user.id, note.authorId);
     const content = this.validComment(contentInput);
 
     return this.prisma.$transaction(async (transaction) => {
+      await this.assertTransactionNotBlocked(transaction, user.id, [
+        note.authorId,
+      ]);
+      await this.assertTransactionNoteAvailable(transaction, noteId);
       const comment = await transaction.noteComment.create({
         data: { noteId, authorId: user.id, content },
         select: this.commentSelect({
@@ -367,6 +450,7 @@ export class InteractionsService {
   ): Promise<CommentMutationResult> {
     const user = await this.requireUser(sessionId);
     const note = await this.requireNote(noteId);
+    await this.safety?.assertNotBlocked(user.id, note.authorId);
     if (!UUID_PATTERN.test(targetCommentId)) throw this.commentNotFound();
     const content = this.validComment(contentInput);
 
@@ -380,9 +464,22 @@ export class InteractionsService {
           authorId: true,
           rootCommentId: true,
           deletedAt: true,
+          moderationStatus: true,
+          author: { select: { status: true } },
         },
       });
-      if (!target || target.noteId !== noteId) throw this.commentNotFound();
+      if (
+        !target ||
+        target.noteId !== noteId ||
+        target.moderationStatus === 'HIDDEN' ||
+        target.author.status === 'SUSPENDED'
+      )
+        throw this.commentNotFound();
+      await this.assertTransactionNotBlocked(transaction, user.id, [
+        note.authorId,
+        target.authorId,
+      ]);
+      await this.assertTransactionNoteAvailable(transaction, noteId);
       if (target.deletedAt) {
         throw new ApiException(
           HttpStatus.CONFLICT,
@@ -459,9 +556,36 @@ export class InteractionsService {
       await this.lockComment(transaction, commentId);
       const comment = await transaction.noteComment.findUnique({
         where: { id: commentId },
-        select: { id: true, authorId: true, noteId: true, deletedAt: true },
+        select: {
+          id: true,
+          authorId: true,
+          noteId: true,
+          deletedAt: true,
+          moderationStatus: true,
+          author: { select: { status: true } },
+          note: {
+            select: {
+              authorId: true,
+              moderationStatus: true,
+              author: { select: { status: true } },
+            },
+          },
+        },
       });
-      if (!comment || comment.deletedAt) throw this.commentNotFound();
+      if (
+        !comment ||
+        comment.deletedAt ||
+        comment.moderationStatus === 'HIDDEN' ||
+        comment.author.status === 'SUSPENDED' ||
+        comment.note.moderationStatus === 'HIDDEN' ||
+        comment.note.author.status === 'SUSPENDED'
+      )
+        throw this.commentNotFound();
+      await this.assertTransactionNotBlocked(transaction, user.id, [
+        comment.authorId,
+        comment.note.authorId,
+      ]);
+      await this.assertTransactionNoteAvailable(transaction, comment.noteId);
       if (comment.authorId === user.id) {
         throw new ApiException(
           HttpStatus.CONFLICT,
@@ -503,11 +627,26 @@ export class InteractionsService {
     commentId: string,
   ): Promise<CommentDeletionResult> {
     const user = await this.requireUser(sessionId);
-    const note = await this.requireNote(noteId);
+    await this.requireNote(noteId);
     if (!UUID_PATTERN.test(commentId)) throw this.commentNotFound();
 
     return this.prisma.$transaction(async (transaction) => {
+      await this.lockNote(transaction, noteId);
       await this.lockComment(transaction, commentId);
+      const lockedNote = await transaction.note.findUnique({
+        where: { id: noteId },
+        select: {
+          moderationStatus: true,
+          author: { select: { status: true } },
+        },
+      });
+      if (
+        !lockedNote ||
+        lockedNote.moderationStatus === 'HIDDEN' ||
+        lockedNote.author.status === 'SUSPENDED'
+      ) {
+        throw this.noteNotFound();
+      }
       const comment = await transaction.noteComment.findUnique({
         where: { id: commentId },
         select: {
@@ -515,6 +654,7 @@ export class InteractionsService {
           noteId: true,
           authorId: true,
           deletedAt: true,
+          moderationStatus: true,
           rootCommentId: true,
           _count: {
             select: {
@@ -524,10 +664,13 @@ export class InteractionsService {
           },
         },
       });
-      if (!comment || comment.noteId !== noteId || comment.deletedAt) {
+      if (!comment || comment.noteId !== noteId) {
         throw this.commentNotFound();
       }
-      if (comment.authorId !== user.id && note.authorId !== user.id) {
+      if (
+        comment.authorId !== user.id ||
+        comment.moderationStatus === 'HIDDEN'
+      ) {
         throw new ApiException(
           HttpStatus.FORBIDDEN,
           'COMMENT_DELETE_FORBIDDEN',
@@ -535,17 +678,18 @@ export class InteractionsService {
         );
       }
 
-      await transaction.commentLike?.deleteMany({ where: { commentId } });
-      const placeholder =
-        (comment._count?.replies ?? 0) > 0 ||
-        (comment._count?.referencedBy ?? 0) > 0;
-      if (placeholder) {
+      const placeholder = true;
+      if (!comment.deletedAt) {
+        await transaction.commentLike?.deleteMany({ where: { commentId } });
         await transaction.noteComment.update({
           where: { id: commentId },
           data: { content: '', deletedAt: new Date() },
         });
-      } else {
-        await transaction.noteComment.delete({ where: { id: commentId } });
+        await this.safety?.markTargetUnavailable(
+          transaction,
+          'COMMENT',
+          commentId,
+        );
       }
       return {
         deleted: true,
@@ -565,12 +709,14 @@ export class InteractionsService {
       rootCommentId: true,
       content: true,
       deletedAt: true,
+      moderationStatus: true,
       createdAt: true,
       author: {
         select: {
           nickname: true,
           avatarObjectKey: true,
           ageRestrictedAt: true,
+          status: true,
         },
       },
       replyTo: {
@@ -592,7 +738,10 @@ export class InteractionsService {
     includePreview: boolean,
   ): NoteCommentData {
     const deleted = Boolean(
-      comment.deletedAt || comment.author.ageRestrictedAt,
+      comment.deletedAt ||
+      comment.moderationStatus === 'HIDDEN' ||
+      comment.author.ageRestrictedAt ||
+      comment.author.status === 'SUSPENDED',
     );
     const preview = includePreview ? (comment.replies ?? []).slice(0, 3) : [];
     const replyCount = comment._count?.replies ?? comment.replies?.length ?? 0;
@@ -603,6 +752,7 @@ export class InteractionsService {
       content: deleted ? null : comment.content,
       createdAt: comment.createdAt.toISOString(),
       deleted,
+      moderationHidden: comment.moderationStatus === 'HIDDEN',
       author: deleted
         ? null
         : {
@@ -630,14 +780,12 @@ export class InteractionsService {
           })()
         : null,
       isAuthor: !deleted && comment.authorId === noteAuthorId,
-      canDelete:
-        !deleted &&
-        Boolean(viewerId) &&
-        (viewerId === comment.authorId || viewerId === noteAuthorId),
+      canDelete: !deleted && Boolean(viewerId) && viewerId === comment.authorId,
       canReply: !deleted,
       likes: deleted ? 0 : (comment._count?.likes ?? 0),
       liked: !deleted && Boolean(comment.likes?.length),
       canLike: !deleted && viewerId !== comment.authorId,
+      canReport: !deleted && Boolean(viewerId) && viewerId !== comment.authorId,
       replies: preview.map((reply) =>
         this.toComment(reply, noteAuthorId, viewerId, false),
       ),
@@ -665,6 +813,70 @@ export class InteractionsService {
       WHERE "id" = ${commentId}::uuid
       FOR UPDATE
     `;
+  }
+
+  private async lockNote(
+    transaction: Prisma.TransactionClient,
+    noteId: string,
+  ): Promise<void> {
+    if (typeof transaction.$queryRaw !== 'function') return;
+    await transaction.$queryRaw`
+      SELECT id FROM "notes"
+      WHERE id = ${noteId}::uuid
+      FOR UPDATE
+    `;
+  }
+
+  private async assertTransactionNotBlocked(
+    transaction: Prisma.TransactionClient,
+    userId: string,
+    targetIds: string[],
+  ): Promise<void> {
+    if (!this.safety) return;
+    const targets = [...new Set(targetIds.filter((id) => id !== userId))];
+    if (targets.length === 0) return;
+    const lockIds = [...new Set([userId, ...targets])].sort();
+    await transaction.$queryRaw(
+      Prisma.sql`
+        SELECT id
+        FROM "users"
+        WHERE id IN (${Prisma.join(
+          lockIds.map((id) => Prisma.sql`${id}::uuid`),
+        )})
+        ORDER BY id
+        FOR UPDATE
+      `,
+    );
+    const activeUsers = await transaction.user.count({
+      where: { id: { in: lockIds }, status: 'ACTIVE' },
+    });
+    if (activeUsers !== lockIds.length) throw this.userNotFound();
+    const blocked = await transaction.userBlock.count({
+      where: {
+        OR: targets.flatMap((targetId) => [
+          { blockerId: userId, blockedId: targetId },
+          { blockerId: targetId, blockedId: userId },
+        ]),
+      },
+    });
+    if (blocked > 0) throw this.userNotFound();
+  }
+
+  private async assertTransactionNoteAvailable(
+    transaction: Prisma.TransactionClient,
+    noteId: string,
+  ): Promise<void> {
+    if (!this.safety) return;
+    const rows = await transaction.$queryRaw<Array<{ id: string }>>`
+      SELECT n.id
+      FROM "notes" n
+      JOIN "users" u ON u.id = n."authorId"
+      WHERE n.id = ${noteId}::uuid
+        AND n."moderationStatus" = 'VISIBLE'
+        AND u.status = 'ACTIVE'
+      FOR UPDATE OF n
+    `;
+    if (rows.length === 0) throw this.noteNotFound();
   }
 
   private validComment(input: string): string {
@@ -708,9 +920,19 @@ export class InteractionsService {
     if (!UUID_PATTERN.test(noteId)) throw this.noteNotFound();
     const note = await this.prisma.note.findUnique({
       where: { id: noteId },
-      select: { id: true, authorId: true },
+      select: {
+        id: true,
+        authorId: true,
+        moderationStatus: true,
+        author: { select: { status: true } },
+      },
     });
-    if (!note) throw this.noteNotFound();
+    if (
+      !note ||
+      note.moderationStatus === 'HIDDEN' ||
+      note.author?.status === 'SUSPENDED'
+    )
+      throw this.noteNotFound();
     return note;
   }
 

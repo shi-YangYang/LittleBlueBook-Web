@@ -100,6 +100,7 @@ export class VerificationCodeService {
   }
 
   async requestCode(email: string, sourceIp: string): Promise<void> {
+    const codeKey = this.codeKey(email);
     const rateKeys = this.rateKeys(email, sourceIp);
     const reservation = await this.redis.eval(
       RESERVE_RATE_LIMIT_SCRIPT,
@@ -108,6 +109,9 @@ export class VerificationCodeService {
     );
 
     if (Number(reservation) !== 1) {
+      if (this.parseStoredCode(await this.redis.get(codeKey))) {
+        return;
+      }
       throw new ApiException(
         HttpStatus.TOO_MANY_REQUESTS,
         'RATE_LIMITED',
@@ -117,7 +121,6 @@ export class VerificationCodeService {
 
     const code =
       this.fixedTestCode ?? randomInt(0, 1_000_000).toString().padStart(6, '0');
-    const codeKey = this.codeKey(email);
     const record: StoredCode = {
       hash: this.hash(email, code),
       attempts: 0,

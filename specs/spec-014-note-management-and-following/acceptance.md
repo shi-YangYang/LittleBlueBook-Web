@@ -1,8 +1,8 @@
 # SPEC-014 验收记录
 
 - Spec：`specs/spec-014-note-management-and-following/spec.md`
-- 当前 Spec 状态：Accepting
-- 验收状态：PASS（等待用户最终确认）
+- 当前 Spec 状态：Accepted
+- 验收状态：PASS（用户已确认）
 - 最新验收轮次：Round 2
 
 本文件只记录实施后的独立验收结论和证据，不修改 `spec.md` 中的需求与验收标准。
@@ -18,7 +18,7 @@
 - [x] 验收 Agent 未修改业务代码或测试
 - [x] 初次独立验收已运行一次完整 Browser E2E
 - [x] AC-001 至 AC-016 全部通过
-- [ ] 用户已确认最终验收完成
+- [x] 用户已确认最终验收完成
 
 ## 验收标准记录
 
@@ -89,3 +89,8 @@
 - 非阻断观察：WebKit native-only `Temporal.Duration`、既有 Next Image 尺寸/LCP 警告和 PostgreSQL 测试客户端弃用提示，均未影响应用断言；
 - 清理：本轮临时目录、隔离容器/卷、测试报告和构建产物已清理；保留既有 `node_modules`，未触碰 `test/spec010-direct-fix-e2e`；
 - 结论：`PASS`，等待用户最终确认后将 Spec 标记为 `Accepted`。
+
+## 用户最终确认
+
+- 2026-08-10：用户明确确认 SPEC-014 验收完成；协调开发 Agent 已将 Spec 状态更新为 `Accepted`。
+- CI 继续作为用户提交后的手动反馈机制，不作为 Spec 完成门禁，也不改变本次已确认的验收结论。

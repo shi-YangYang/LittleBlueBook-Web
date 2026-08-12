@@ -10,10 +10,11 @@ import type { StoredSession } from './auth.types.js';
 export class SessionService {
   constructor(@Inject(RedisService) private readonly redis: RedisService) {}
 
-  async create(userId: string): Promise<string> {
+  async create(userId: string, authVersion = 1): Promise<string> {
     const sessionId = randomBytes(32).toString('base64url');
     const session: StoredSession = {
       userId,
+      authVersion,
       createdAt: new Date().toISOString(),
     };
     await this.redis.set(this.key(sessionId), JSON.stringify(session), {
@@ -32,11 +33,17 @@ export class SessionService {
       const parsed = JSON.parse(value) as Partial<StoredSession>;
       if (
         typeof parsed.userId !== 'string' ||
-        typeof parsed.createdAt !== 'string'
+        typeof parsed.createdAt !== 'string' ||
+        (parsed.authVersion !== undefined &&
+          typeof parsed.authVersion !== 'number')
       ) {
         return null;
       }
-      return { userId: parsed.userId, createdAt: parsed.createdAt };
+      return {
+        userId: parsed.userId,
+        authVersion: parsed.authVersion ?? 1,
+        createdAt: parsed.createdAt,
+      };
     } catch {
       return null;
     }

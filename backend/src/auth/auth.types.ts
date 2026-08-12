@@ -5,6 +5,7 @@ export type PublicUser = {
   email: string;
   nickname: string;
   avatar: ProfileAvatar;
+  role?: 'ADMIN';
 };
 
 export type AuthenticatedResult = {
@@ -23,6 +24,7 @@ export type VerificationResult =
 
 export type StoredSession = {
   userId: string;
+  authVersion: number;
   createdAt: string;
 };
 

@@ -17,6 +17,9 @@ import {
 } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 
+import { SESSION_COOKIE_NAME } from '../auth/auth.constants.js';
+import { readCookie } from '../auth/cookies.js';
+import { SessionService } from '../auth/session.service.js';
 import { ApiException } from '../common/api-exception.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { MEDIA_STORAGE, type MediaStorage } from './media.types.js';
@@ -29,6 +32,7 @@ export class MediaController {
   constructor(
     @Inject(MEDIA_STORAGE) private readonly storage: MediaStorage,
     @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(SessionService) private readonly sessions: SessionService,
   ) {}
 
   @Head(':objectKey')
@@ -36,9 +40,10 @@ export class MediaController {
   @ApiOkResponse({ description: 'Headers matching a complete GET response' })
   async head(
     @Param('objectKey') objectKey: string,
+    @Req() request: Request,
     @Res() response: Response,
   ): Promise<void> {
-    const info = await this.requirePublicObject(objectKey);
+    const info = await this.requirePublicObject(objectKey, request);
     response
       .status(HttpStatus.OK)
       .set(this.headers(info.mimeType, info.byteSize))
@@ -55,7 +60,7 @@ export class MediaController {
     @Req() request: Request,
     @Res() response: Response,
   ): Promise<void> {
-    const info = await this.requirePublicObject(objectKey);
+    const info = await this.requirePublicObject(objectKey, request);
     const isVideo = info.mimeType === 'video/mp4';
     const requestedRange = request.headers.range;
     if (!isVideo || !requestedRange) {
@@ -90,36 +95,124 @@ export class MediaController {
     await this.pipe(objectKey, response, range);
   }
 
-  private async requirePublicObject(objectKey: string) {
+  private async requirePublicObject(objectKey: string, request: Request) {
     if (!OBJECT_KEY_PATTERN.test(objectKey)) throw this.notFound();
-    const assigned = objectKey.endsWith('.mp4')
-      ? await this.prisma.noteVideo.findUnique({
-          where: { videoObjectKey: objectKey },
-          select: { noteId: true },
-        })
-      : await this.isAssignedImage(objectKey);
-    if (!assigned) throw this.notFound();
+    const viewer = await this.viewer(request);
+    const assignment = await this.assignment(objectKey);
+    if (!assignment || !(await this.canRead(assignment, viewer))) {
+      throw this.notFound();
+    }
     const info = await this.storage.info(objectKey);
     if (!info) throw this.notFound();
     return info;
   }
 
-  private async isAssignedImage(objectKey: string): Promise<boolean> {
-    const [noteImage, videoCover, avatar] = await Promise.all([
+  private async assignment(objectKey: string): Promise<
+    | {
+        ownerId: string;
+        ownerStatus: 'ACTIVE' | 'SUSPENDED';
+        noteStatus: 'VISIBLE' | 'HIDDEN';
+      }
+    | {
+        ownerId: string;
+        ownerStatus: 'ACTIVE' | 'SUSPENDED';
+        noteStatus: null;
+      }
+    | null
+  > {
+    const [noteImage, noteVideo, avatar] = await Promise.all([
       this.prisma.noteImage.findUnique({
         where: { objectKey },
-        select: { id: true },
+        select: {
+          note: {
+            select: {
+              authorId: true,
+              moderationStatus: true,
+              author: { select: { status: true } },
+            },
+          },
+        },
       }),
-      this.prisma.noteVideo.findUnique({
-        where: { coverObjectKey: objectKey },
-        select: { id: true },
+      this.prisma.noteVideo.findFirst({
+        where: {
+          OR: [{ videoObjectKey: objectKey }, { coverObjectKey: objectKey }],
+        },
+        select: {
+          note: {
+            select: {
+              authorId: true,
+              moderationStatus: true,
+              author: { select: { status: true } },
+            },
+          },
+        },
       }),
       this.prisma.user.findFirst({
         where: { avatarObjectKey: objectKey },
-        select: { id: true },
+        select: { id: true, status: true },
       }),
     ]);
-    return Boolean(noteImage || videoCover || avatar);
+    const note = noteImage?.note ?? noteVideo?.note;
+    if (note) {
+      return {
+        ownerId: note.authorId,
+        ownerStatus: note.author.status,
+        noteStatus: note.moderationStatus,
+      };
+    }
+    return avatar
+      ? { ownerId: avatar.id, ownerStatus: avatar.status, noteStatus: null }
+      : null;
+  }
+
+  private async viewer(request: Request): Promise<{
+    id: string;
+    role: 'USER' | 'ADMIN';
+  } | null> {
+    const sessionId = readCookie(request, SESSION_COOKIE_NAME);
+    if (!sessionId) return null;
+    const session = await this.sessions.read(sessionId);
+    if (!session) return null;
+    const user = await this.prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { id: true, role: true, status: true, authVersion: true },
+    });
+    if (
+      !user ||
+      user.status !== 'ACTIVE' ||
+      user.authVersion !== session.authVersion
+    ) {
+      return null;
+    }
+    return { id: user.id, role: user.role };
+  }
+
+  private async canRead(
+    assignment: {
+      ownerId: string;
+      ownerStatus: 'ACTIVE' | 'SUSPENDED';
+      noteStatus: 'VISIBLE' | 'HIDDEN' | null;
+    },
+    viewer: { id: string; role: 'USER' | 'ADMIN' } | null,
+  ): Promise<boolean> {
+    if (viewer?.role === 'ADMIN') return true;
+    if (
+      assignment.ownerStatus !== 'ACTIVE' ||
+      assignment.noteStatus === 'HIDDEN'
+    ) {
+      return false;
+    }
+    if (!viewer || viewer.id === assignment.ownerId) return true;
+    return (
+      (await this.prisma.userBlock.count({
+        where: {
+          OR: [
+            { blockerId: viewer.id, blockedId: assignment.ownerId },
+            { blockerId: assignment.ownerId, blockedId: viewer.id },
+          ],
+        },
+      })) === 0
+    );
   }
 
   private headers(mimeType: string, contentLength: number) {
@@ -127,7 +220,8 @@ export class MediaController {
       'Content-Type': mimeType,
       'Content-Length': String(contentLength),
       'Accept-Ranges': 'bytes',
-      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Cache-Control': 'private, no-store',
+      Vary: 'Cookie',
       'X-Content-Type-Options': 'nosniff',
     };
   }

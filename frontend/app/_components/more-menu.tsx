@@ -166,6 +166,24 @@ export function MoreMenu({
               编辑资料
             </Link>
           ) : null}
+          {authenticated ? (
+            <Link
+              role="menuitem"
+              href="/settings/reports"
+              onClick={() => close(false)}
+            >
+              我的举报
+            </Link>
+          ) : null}
+          {authenticated ? (
+            <Link
+              role="menuitem"
+              href="/settings/blocked-users"
+              onClick={() => close(false)}
+            >
+              黑名单管理
+            </Link>
+          ) : null}
           <Link role="menuitem" href="/help" onClick={() => close(false)}>
             帮助与反馈
           </Link>

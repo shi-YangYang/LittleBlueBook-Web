@@ -4,6 +4,7 @@ import Image from 'next/image';
 import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type RefObject,
   useCallback,
   useEffect,
@@ -22,6 +23,7 @@ export type AuthenticatedUser = {
   email: string;
   nickname: string;
   avatar: ProfileAvatar;
+  role?: 'USER' | 'ADMIN';
 };
 
 type SessionResult = {
@@ -171,6 +173,16 @@ export function AuthDialog({
       event.preventDefault();
       first.focus();
     }
+  };
+
+  const openLegalDocument = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    const opened = window.open(
+      event.currentTarget.href,
+      '_blank',
+      'noopener,noreferrer',
+    );
+    if (opened) opened.opener = null;
   };
 
   const requestCode = async () => {
@@ -407,10 +419,20 @@ export function AuthDialog({
                   <label htmlFor="auth-legal-acceptance">
                     我已年满 14 周岁，并已阅读和同意
                   </label>
-                  <a href="/terms" target="_blank" rel="noopener noreferrer">
+                  <a
+                    href="/terms"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={openLegalDocument}
+                  >
                     《用户协议》
                   </a>
-                  <a href="/privacy" target="_blank" rel="noopener noreferrer">
+                  <a
+                    href="/privacy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={openLegalDocument}
+                  >
                     《隐私政策》
                   </a>
                 </span>

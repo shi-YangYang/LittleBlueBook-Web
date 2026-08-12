@@ -22,6 +22,7 @@ export type NoteCommentData = {
   content: string | null;
   createdAt: string;
   deleted: boolean;
+  moderationHidden: boolean;
   author: CommentAuthor | null;
   replyTo: {
     id: string;
@@ -34,6 +35,7 @@ export type NoteCommentData = {
   likes: number;
   liked: boolean;
   canLike: boolean;
+  canReport: boolean;
   replies: NoteCommentData[];
   replyCount: number;
   repliesNextCursor: string | null;

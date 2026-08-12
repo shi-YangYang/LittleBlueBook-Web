@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { SessionModule } from '../auth/session.module.js';
 import { DatabaseModule } from '../database/database.module.js';
 import { ImageValidatorService } from './image-validator.service.js';
 import { LocalMediaStorageService } from './local-media-storage.service.js';
@@ -9,7 +10,7 @@ import { Mp4ValidatorService } from './mp4-validator.service.js';
 import { PendingMediaCleanupService } from './pending-media-cleanup.service.js';
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, SessionModule],
   controllers: [MediaController],
   providers: [
     ImageValidatorService,

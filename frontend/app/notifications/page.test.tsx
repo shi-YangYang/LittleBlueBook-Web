@@ -219,8 +219,8 @@ describe('NotificationsPage', () => {
                 type: 'COMMENT_REPLIED',
                 action: '回复了你的评论',
                 comment: {
-                  id: null,
-                  rootCommentId: null,
+                  id: '00000000-0000-4000-8000-000000000014',
+                  rootCommentId: '00000000-0000-4000-8000-000000000014',
                   preview: null,
                   deleted: true,
                 },

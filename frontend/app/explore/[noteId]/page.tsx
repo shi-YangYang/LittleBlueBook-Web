@@ -5,6 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
+  Fragment,
   type FormEvent,
   use,
   useCallback,
@@ -20,6 +21,7 @@ import {
 import { Avatar } from '../../_components/avatar';
 import { Icon } from '../../_components/icon';
 import { NoteManageMenu } from '../../_components/note-manage-menu';
+import { ReportDialog } from '../../_components/report-dialog';
 import { apiRequest, ApiRequestError } from '../../_lib/api';
 import { lockDocumentScroll } from '../../_lib/document-scroll-lock';
 import {
@@ -84,15 +86,29 @@ function normalizeComment(comment: NoteCommentData): NoteCommentData {
     rootCommentId: comment.rootCommentId ?? null,
     content: comment.content ?? null,
     deleted: comment.deleted ?? false,
+    moderationHidden: comment.moderationHidden ?? false,
     replyTo: comment.replyTo ?? null,
     canReply: comment.canReply ?? !comment.deleted,
     likes: comment.likes ?? 0,
     liked: comment.liked ?? false,
     canLike: comment.canLike ?? true,
+    canReport: comment.canReport ?? false,
     replies: (comment.replies ?? []).map(normalizeComment),
     replyCount: comment.replyCount ?? comment.replies?.length ?? 0,
     repliesNextCursor: comment.repliesNextCursor ?? null,
   };
+}
+
+function hasVisibleComments(comments: NoteCommentData[]): boolean {
+  return comments.some(
+    (comment) =>
+      !comment.deleted ||
+      comment.moderationHidden ||
+      comment.replies.some(
+        (reply) => !reply.deleted || reply.moderationHidden,
+      ) ||
+      Boolean(comment.repliesNextCursor),
+  );
 }
 
 export default function NoteDetailPage({
@@ -151,6 +167,10 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
   );
   const [deletingComment, setDeletingComment] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [reportTarget, setReportTarget] = useState<{
+    targetType: 'NOTE' | 'COMMENT';
+    targetId: string;
+  } | null>(null);
   const pendingActionRef = useRef<(() => Promise<void>) | null>(null);
   const commentEntryRef = useRef<HTMLButtonElement>(null);
   const commentContentRef = useRef<HTMLTextAreaElement>(null);
@@ -1009,12 +1029,41 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
 
   const currentImage = note.images[imageIndex];
   const commentLength = Array.from(commentDraft).length;
+  const hasRenderedComments = hasVisibleComments(comments);
 
   const renderComment = (
     comment: NoteCommentData,
     rootCommentId: string,
     reply = false,
-  ) => (
+  ) => {
+    if (comment.deleted && !comment.moderationHidden) {
+      if (reply) return null;
+      return (
+        <Fragment key={comment.id}>
+          {comment.replies.map((item) =>
+            renderComment(item, rootCommentId, false),
+          )}
+          {comment.repliesNextCursor ? (
+            <li className="reply-pagination">
+              {replyErrorIds.has(rootCommentId) ? (
+                <span role="alert">加载回复失败，已保留现有内容</span>
+              ) : null}
+              <button
+                type="button"
+                disabled={replyLoadingIds.has(rootCommentId)}
+                onClick={() => void loadMoreReplies(rootCommentId)}
+              >
+                {replyLoadingIds.has(rootCommentId)
+                  ? '加载中…'
+                  : `展开更多回复（共 ${comment.replyCount} 条）`}
+              </button>
+            </li>
+          ) : null}
+        </Fragment>
+      );
+    }
+
+    return (
     <li
       key={comment.id}
       className={`${reply ? 'comment-reply' : ''} ${highlightCommentId === comment.id ? 'comment-highlight' : ''}`}
@@ -1032,7 +1081,9 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
       )}
       <div className="comment-body">
         {comment.deleted ? (
-          <p className="deleted-comment">该评论已删除</p>
+          <p className="deleted-comment">
+            {comment.moderationHidden ? '内容已被管理员隐藏' : '该评论已删除'}
+          </p>
         ) : (
           <>
             <div className="comment-heading">
@@ -1047,6 +1098,19 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
                   }}
                 >
                   删除
+                </button>
+              ) : null}
+              {comment.canReport ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setReportTarget({
+                      targetType: 'COMMENT',
+                      targetId: comment.id,
+                    })
+                  }
+                >
+                  举报
                 </button>
               ) : null}
             </div>
@@ -1110,7 +1174,8 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
         ) : null}
       </div>
     </li>
-  );
+    );
+  };
 
   return (
     <main className="detail-page">
@@ -1155,7 +1220,12 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
             }
           }}
         >
-          {note.contentType === 'VIDEO' && note.video ? (
+          {note.moderationHidden ? (
+            <div className="detail-image-error" role="status">
+              <Icon name="empty" size={54} />
+              <span>内容已被管理员隐藏</span>
+            </div>
+          ) : note.contentType === 'VIDEO' && note.video ? (
             videoFailed ? (
               <div className="detail-image-error" role="alert">
                 <Icon name="video" size={54} />
@@ -1265,6 +1335,17 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
                   }}
                 />
               ) : null}
+              {note.viewer.canReport ? (
+                <button
+                  className="detail-report-action"
+                  type="button"
+                  onClick={() =>
+                    setReportTarget({ targetType: 'NOTE', targetId: note.id })
+                  }
+                >
+                  举报
+                </button>
+              ) : null}
             </header>
 
             <div className="detail-copy">
@@ -1319,7 +1400,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
                     重试
                   </button>
                 </div>
-              ) : comments.length === 0 ? (
+              ) : !hasRenderedComments ? (
                 <div className="comment-state">
                   <Icon name="comment" size={34} />
                   <p>还没有评论</p>
@@ -1483,6 +1564,7 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
                     isAuthor: user.id === current.author.id,
                     canLike: user.id !== current.author.id,
                     canFollow: user.id !== current.author.id,
+                    canReport: user.id !== current.author.id,
                   },
                 }
               : current,
@@ -1532,6 +1614,16 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {reportTarget ? (
+        <ReportDialog
+          open
+          targetType={reportTarget.targetType}
+          targetId={reportTarget.targetId}
+          onClose={() => setReportTarget(null)}
+          onSuccess={setToast}
+        />
       ) : null}
 
       {toast ? (

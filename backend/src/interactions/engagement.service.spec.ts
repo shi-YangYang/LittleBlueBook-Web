@@ -19,11 +19,13 @@ function record(overrides: Record<string, unknown> = {}) {
     rootCommentId: rootId,
     content: '回复内容',
     deletedAt: null,
+    moderationStatus: 'VISIBLE',
     createdAt: new Date('2026-08-01T10:00:00.000Z'),
     author: {
       nickname: '回复者',
       avatarObjectKey: null,
       ageRestrictedAt: null,
+      status: 'ACTIVE',
     },
     replyTo: {
       id: targetId,
@@ -72,6 +74,8 @@ describe('SPEC-011 comment engagement', () => {
           authorId: targetAuthorId,
           rootCommentId: rootId,
           deletedAt: null,
+          moderationStatus: 'VISIBLE',
+          author: { status: 'ACTIVE' },
         })),
         findFirst: jest.fn(async () => ({ id: rootId })),
         create: jest.fn(async () => record()),
@@ -125,6 +129,13 @@ describe('SPEC-011 comment engagement', () => {
           noteId,
           authorId: targetAuthorId,
           deletedAt: null,
+          moderationStatus: 'VISIBLE',
+          author: { status: 'ACTIVE' },
+          note: {
+            authorId: noteAuthorId,
+            moderationStatus: 'VISIBLE',
+            author: { status: 'ACTIVE' },
+          },
         })),
       },
       commentLike: {
@@ -153,6 +164,8 @@ describe('SPEC-011 comment engagement', () => {
           authorId: targetAuthorId,
           rootCommentId: rootId,
           deletedAt: null,
+          moderationStatus: 'VISIBLE',
+          author: { status: 'ACTIVE' },
         })),
         findFirst: jest.fn(async () => ({ id: rootId })),
         create: jest.fn(async () =>
@@ -190,12 +203,19 @@ describe('SPEC-011 comment engagement', () => {
   it('keeps a target referenced by a deleted placeholder and clears its likes', async () => {
     const transaction = {
       $queryRaw: jest.fn(async () => [{ id: targetId }]),
+      note: {
+        findUnique: jest.fn(async () => ({
+          moderationStatus: 'VISIBLE',
+          author: { status: 'ACTIVE' },
+        })),
+      },
       noteComment: {
         findUnique: jest.fn(async () => ({
           id: targetId,
           noteId,
           authorId: actorId,
           deletedAt: null,
+          moderationStatus: 'VISIBLE',
           rootCommentId: rootId,
           _count: { replies: 0, referencedBy: 1 },
         })),

@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 
 import { AuthService } from '../auth/auth.service.js';
 import { ApiException } from '../common/api-exception.js';
@@ -8,6 +8,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { MEDIA_STORAGE, type MediaStorage } from '../media/media.types.js';
 import { publicAvatar } from '../profile/profile-avatar.js';
+import { SafetyService } from '../safety/safety.service.js';
 import { MessageRealtimeService } from './message-realtime.service.js';
 import type {
   ConversationDetail,
@@ -61,6 +62,7 @@ export class MessagesService {
     @Inject(MEDIA_STORAGE) private readonly media: MediaStorage,
     @Inject(MessageRealtimeService)
     private readonly realtime: MessageRealtimeService,
+    @Optional() @Inject(SafetyService) private readonly safety?: SafetyService,
   ) {}
 
   async conversations(
@@ -592,11 +594,48 @@ export class MessagesService {
     firstUserId: string,
     secondUserId: string,
   ): Promise<void> {
-    const target = await transaction.user.findUnique({
-      where: { id: secondUserId },
-      select: { id: true },
+    if (typeof transaction.$queryRaw === 'function') {
+      const [first, second] = [firstUserId, secondUserId].sort();
+      await transaction.$queryRaw`
+        SELECT id
+        FROM "users"
+        WHERE id IN (${first}::uuid, ${second}::uuid)
+        ORDER BY id
+        FOR UPDATE
+      `;
+    }
+    const [sender, target] = await Promise.all([
+      transaction.user.findUnique({
+        where: { id: firstUserId },
+        select: { id: true, status: true },
+      }),
+      transaction.user.findUnique({
+        where: { id: secondUserId },
+        select: { id: true, status: true },
+      }),
+    ]);
+    if (
+      !sender ||
+      sender.status === 'SUSPENDED' ||
+      !target ||
+      target.status === 'SUSPENDED'
+    )
+      throw this.userNotFound();
+    const blocked = await transaction.userBlock?.count({
+      where: {
+        OR: [
+          { blockerId: firstUserId, blockedId: secondUserId },
+          { blockerId: secondUserId, blockedId: firstUserId },
+        ],
+      },
     });
-    if (!target) throw this.userNotFound();
+    if ((blocked ?? 0) > 0) {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        'MESSAGE_BLOCKED',
+        '当前无法发送私信',
+      );
+    }
     const count = await transaction.userFollow.count({
       where: {
         OR: [
@@ -615,6 +654,12 @@ export class MessagesService {
   }
 
   private async isMutual(firstUserId: string, secondUserId: string) {
+    if (await this.safety?.isBlocked(firstUserId, secondUserId)) return false;
+    const target = await this.prisma.user.findUnique({
+      where: { id: secondUserId },
+      select: { status: true },
+    });
+    if (!target || target.status === 'SUSPENDED') return false;
     const count = await this.prisma.userFollow.count({
       where: {
         OR: [
@@ -648,10 +693,36 @@ export class MessagesService {
           : relation.followerId;
       counts.set(opponent, (counts.get(opponent) ?? 0) + 1);
     }
-    return new Set(
+    const mutual = new Set(
       [...counts.entries()]
         .filter(([, count]) => count === 2)
         .map(([opponent]) => opponent),
+    );
+    const [blocks, activeUsers] = await Promise.all([
+      this.prisma.userBlock.findMany({
+        where: {
+          OR: [
+            { blockerId: userId, blockedId: { in: [...mutual] } },
+            { blockedId: userId, blockerId: { in: [...mutual] } },
+          ],
+        },
+        select: { blockerId: true, blockedId: true },
+      }),
+      this.prisma.user.findMany({
+        where: { id: { in: [...mutual] }, status: 'ACTIVE' },
+        select: { id: true },
+      }),
+    ]);
+    const blockedIds = new Set(
+      blocks.map((block) =>
+        block.blockerId === userId ? block.blockedId : block.blockerId,
+      ),
+    );
+    const activeIds = new Set(activeUsers.map((item) => item.id));
+    return new Set(
+      [...mutual].filter(
+        (opponent) => !blockedIds.has(opponent) && activeIds.has(opponent),
+      ),
     );
   }
 

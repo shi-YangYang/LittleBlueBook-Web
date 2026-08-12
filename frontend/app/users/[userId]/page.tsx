@@ -11,6 +11,8 @@ import { Avatar } from '../../_components/avatar';
 import { Icon } from '../../_components/icon';
 import { NoteFeed } from '../../_components/note-feed';
 import { PageSidebar, PageTopbar } from '../../_components/page-chrome';
+import { ReportDialog } from '../../_components/report-dialog';
+import { useSafetyDialog } from '../../_components/use-safety-dialog';
 import { apiRequest, ApiRequestError } from '../../_lib/api';
 import type { PublicUserProfileData } from '../../_lib/search';
 
@@ -37,6 +39,14 @@ export default function PublicUserPage() {
   const [authOpen, setAuthOpen] = useState(false);
   const [followingBusy, setFollowingBusy] = useState(false);
   const [toast, setToast] = useState('');
+  const [reportOpen, setReportOpen] = useState(false);
+  const [blockOpen, setBlockOpen] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const blockDialogRef = useSafetyDialog(
+    blockOpen,
+    () => setBlockOpen(false),
+    blocking,
+  );
   const pendingActionRef = useRef<(() => Promise<void>) | null>(null);
   const pendingDestinationRef = useRef<string | null>(null);
 
@@ -134,6 +144,29 @@ export default function PublicUserPage() {
     }
   };
 
+  const blockUser = async () => {
+    if (blocking) return;
+    setBlocking(true);
+    try {
+      await apiRequest(`/safety/users/${encodeURIComponent(userId)}/block`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      setBlockOpen(false);
+      router.replace('/');
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 401) {
+        setBlockOpen(false);
+        pendingActionRef.current = blockUser;
+        setAuthOpen(true);
+      } else {
+        setToast('拉黑失败，请稍后重试');
+      }
+    } finally {
+      setBlocking(false);
+    }
+  };
+
   const loading =
     profileRequest.key !== requestKey || profileRequest.status === 'loading';
   const notFound =
@@ -203,46 +236,66 @@ export default function PublicUserPage() {
                       <h1>{profile.nickname}</h1>
                       <p>小蓝书号：{profile.littleBlueBookId}</p>
                     </div>
-                    <button
-                      className={`follow-action public-profile-follow ${profile.viewer.following ? 'following' : ''}`}
-                      type="button"
-                      disabled={followingBusy}
-                      aria-pressed={profile.viewer.following}
-                      onClick={() => void setFollow(!profile.viewer.following)}
-                    >
-                      {followingBusy
-                        ? '处理中…'
-                        : profile.viewer.following
-                          ? '已关注'
-                          : '关注'}
-                    </button>
-                    <button
-                      className="public-profile-message-action"
-                      type="button"
-                      disabled={
-                        profile.viewer.authenticated &&
-                        !profile.viewer.canMessage
-                      }
-                      title={
-                        profile.viewer.authenticated &&
-                        !profile.viewer.canMessage
-                          ? '互相关注后可私信'
-                          : undefined
-                      }
-                      onClick={() => {
-                        const destination = `/messages?user=${encodeURIComponent(profile.id)}`;
-                        if (!profile.viewer.authenticated) {
-                          pendingDestinationRef.current = destination;
-                          setAuthOpen(true);
-                        } else if (profile.viewer.canMessage) {
-                          router.push(destination);
-                        } else {
-                          setToast('互相关注后可私信');
+                    <div className="public-profile-actions">
+                      <button
+                        className={`follow-action public-profile-follow ${profile.viewer.following ? 'following' : ''}`}
+                        type="button"
+                        disabled={followingBusy}
+                        aria-pressed={profile.viewer.following}
+                        onClick={() => void setFollow(!profile.viewer.following)}
+                      >
+                        {followingBusy
+                          ? '处理中…'
+                          : profile.viewer.following
+                            ? '已关注'
+                            : '关注'}
+                      </button>
+                      <button
+                        className="public-profile-message-action"
+                        type="button"
+                        disabled={
+                          profile.viewer.authenticated &&
+                          !profile.viewer.canMessage
                         }
-                      }}
-                    >
-                      私信
-                    </button>
+                        title={
+                          profile.viewer.authenticated &&
+                          !profile.viewer.canMessage
+                            ? '互相关注后可私信'
+                            : undefined
+                        }
+                        onClick={() => {
+                          const destination = `/messages?user=${encodeURIComponent(profile.id)}`;
+                          if (!profile.viewer.authenticated) {
+                            pendingDestinationRef.current = destination;
+                            setAuthOpen(true);
+                          } else if (profile.viewer.canMessage) {
+                            router.push(destination);
+                          } else {
+                            setToast('互相关注后可私信');
+                          }
+                        }}
+                      >
+                        私信
+                      </button>
+                      {profile.viewer.authenticated ? (
+                        <button
+                          className="public-profile-safety-action"
+                          type="button"
+                          onClick={() => setReportOpen(true)}
+                        >
+                          举报
+                        </button>
+                      ) : null}
+                      {profile.viewer.authenticated ? (
+                        <button
+                          className="public-profile-safety-action danger"
+                          type="button"
+                          onClick={() => setBlockOpen(true)}
+                        >
+                          拉黑
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                   <p className="profile-gender">性别：{profile.gender}</p>
                   {profile.age == null ? null : (
@@ -337,6 +390,38 @@ export default function PublicUserPage() {
         }}
         onToast={setToast}
       />
+      <ReportDialog
+        open={reportOpen}
+        targetType="USER"
+        targetId={userId}
+        onClose={() => setReportOpen(false)}
+        onSuccess={setToast}
+      />
+      {blockOpen ? (
+        <div className="safety-dialog-layer">
+          <div
+            ref={blockDialogRef}
+            className="safety-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="block-user-title"
+            tabIndex={-1}
+          >
+            <h2 id="block-user-title">拉黑该用户</h2>
+            <p>
+              拉黑后双方将无法查看彼此内容、互动或发送私信，现有关注关系会被移除。
+            </p>
+            <div className="safety-dialog-actions">
+              <button disabled={blocking} onClick={() => setBlockOpen(false)}>
+                取消
+              </button>
+              <button disabled={blocking} onClick={() => void blockUser()}>
+                {blocking ? '处理中…' : '确认拉黑'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

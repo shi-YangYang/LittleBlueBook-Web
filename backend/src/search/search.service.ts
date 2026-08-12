@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 
 import { AuthService } from '../auth/auth.service.js';
 import { ApiException } from '../common/api-exception.js';
@@ -11,6 +11,7 @@ import { MEDIA_STORAGE, type MediaStorage } from '../media/media.types.js';
 import type { NoteCard, NotePage } from '../notes/notes.types.js';
 import { calculateAge } from '../profile/profile-age.js';
 import { publicAvatar } from '../profile/profile-avatar.js';
+import { SafetyService } from '../safety/safety.service.js';
 import type { ProfileGender } from '../profile/profile.types.js';
 import type { PublicUserProfile, SearchUserPage } from './search.types.js';
 
@@ -93,6 +94,7 @@ export class SearchService {
     @Inject(AuthService) private readonly auth: AuthService,
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(MEDIA_STORAGE) private readonly media: MediaStorage,
+    @Optional() @Inject(SafetyService) private readonly safety?: SafetyService,
   ) {}
 
   async notes(
@@ -217,6 +219,15 @@ export class SearchService {
           WHERE nv."noteId" = n."id" AND n."contentType" = 'VIDEO'
         ) cover ON TRUE
         WHERE u."ageRestrictedAt" IS NULL
+          AND u."status" = 'ACTIVE'
+          AND n."moderationStatus" = 'VISIBLE'
+          AND (
+            ${viewerId}::uuid IS NULL OR NOT EXISTS (
+              SELECT 1 FROM "user_blocks" ub
+              WHERE (ub."blockerId" = ${viewerId}::uuid AND ub."blockedId" = u."id")
+                 OR (ub."blockedId" = ${viewerId}::uuid AND ub."blockerId" = u."id")
+            )
+          )
           AND n."contentType" = CAST(${contentType} AS "NoteContentType")
           AND ${Prisma.join(overallConditions, ' AND ')}
       )
@@ -295,7 +306,7 @@ export class SearchService {
             ELSE 3
           END AS "rank",
           (SELECT count(*) FROM "user_follows" uf WHERE uf."followedId" = u."id") AS "followers",
-          (SELECT count(*) FROM "notes" n WHERE n."authorId" = u."id") AS "notes",
+          (SELECT count(*) FROM "notes" n WHERE n."authorId" = u."id" AND n."moderationStatus" = 'VISIBLE') AS "notes",
           (
             ${viewerId}::uuid IS NOT NULL
             AND EXISTS (
@@ -306,6 +317,14 @@ export class SearchService {
           ) AS "following"
         FROM "users" u
         WHERE u."ageRestrictedAt" IS NULL
+          AND u."status" = 'ACTIVE'
+          AND (
+            ${viewerId}::uuid IS NULL OR NOT EXISTS (
+              SELECT 1 FROM "user_blocks" ub
+              WHERE (ub."blockerId" = ${viewerId}::uuid AND ub."blockedId" = u."id")
+                 OR (ub."blockedId" = ${viewerId}::uuid AND ub."blockerId" = u."id")
+            )
+          )
           AND ${Prisma.join(overallConditions, ' AND ')}
       )
       SELECT * FROM ranked
@@ -363,11 +382,14 @@ export class SearchService {
         birthDate: true,
         showAge: true,
         ageRestrictedAt: true,
+        status: true,
         bio: true,
         avatarObjectKey: true,
       },
     });
-    if (!user || user.ageRestrictedAt) throw this.userNotFound();
+    if (!user || user.ageRestrictedAt || user.status === 'SUSPENDED')
+      throw this.userNotFound();
+    if (viewer) await this.safety?.assertNotBlocked(viewer.id, user.id);
 
     const [
       following,
@@ -379,9 +401,15 @@ export class SearchService {
     ] = await Promise.all([
       this.prisma.userFollow.count({ where: { followerId: user.id } }),
       this.prisma.userFollow.count({ where: { followedId: user.id } }),
-      this.prisma.noteLike.count({ where: { note: { authorId: user.id } } }),
+      this.prisma.noteLike.count({
+        where: {
+          note: { authorId: user.id, moderationStatus: 'VISIBLE' },
+        },
+      }),
       this.prisma.noteFavorite.count({
-        where: { note: { authorId: user.id } },
+        where: {
+          note: { authorId: user.id, moderationStatus: 'VISIBLE' },
+        },
       }),
       viewer && viewer.id !== user.id
         ? this.prisma.userFollow.findUnique({
@@ -442,16 +470,19 @@ export class SearchService {
       this.auth.currentUser(sessionId),
       this.prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, ageRestrictedAt: true },
+        select: { id: true, ageRestrictedAt: true, status: true },
       }),
     ]);
-    if (!exists || exists.ageRestrictedAt) throw this.userNotFound();
+    if (!exists || exists.ageRestrictedAt || exists.status === 'SUSPENDED')
+      throw this.userNotFound();
+    if (viewer) await this.safety?.assertNotBlocked(viewer.id, userId);
     const pageSize = this.pageSize(limitInput);
     const scope = `public-notes:${userId}`;
     const cursor = this.decodeNoteCursor(cursorInput, scope);
     const notes = await this.prisma.note.findMany({
       where: {
         authorId: userId,
+        moderationStatus: 'VISIBLE',
         ...(cursor
           ? {
               OR: [

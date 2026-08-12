@@ -147,6 +147,71 @@ describe('NoteDetailPage', () => {
     );
   });
 
+  it('omits user-deleted comments while preserving their visible replies', async () => {
+    const deletedRootId = '00000000-0000-4000-8000-000000000030';
+    const visibleReply = {
+      id: '00000000-0000-4000-8000-000000000031',
+      rootCommentId: deletedRootId,
+      content: '保留的回复',
+      createdAt: '2026-07-26T11:30:00.000Z',
+      deleted: false,
+      moderationHidden: false,
+      author: {
+        id: '00000000-0000-4000-8000-000000000032',
+        nickname: '回复用户',
+        avatar: { type: 'initial', value: '回' },
+      },
+      replyTo: { id: deletedRootId, nickname: null, deleted: true },
+      isAuthor: false,
+      canDelete: false,
+      canReply: true,
+      likes: 0,
+      liked: false,
+      canLike: true,
+      canReport: false,
+      replies: [],
+      replyCount: 0,
+      repliesNextCursor: null,
+    };
+    const deletedRoot = {
+      ...visibleReply,
+      id: deletedRootId,
+      rootCommentId: null,
+      content: null,
+      deleted: true,
+      author: null,
+      replyTo: null,
+      canReply: false,
+      replies: [visibleReply],
+      replyCount: 1,
+      repliesNextCursor: 'more-replies',
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith(`/notes/${note.id}/views`)) {
+          return response({ counted: true, viewCount: 1 });
+        }
+        if (url.includes('/comments')) {
+          return response({ items: [deletedRoot], nextCursor: null, total: 1 });
+        }
+        return response({
+          ...note,
+          interactions: { ...note.interactions, comments: 1 },
+        });
+      }) as unknown as typeof fetch,
+    );
+
+    render(<NoteDetailView noteId={note.id} />);
+
+    expect(await screen.findByText('保留的回复')).toBeVisible();
+    expect(screen.queryByText('该评论已删除')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '展开更多回复（共 1 条）' }),
+    ).toBeVisible();
+  });
+
   it('hides the internal legacy channel and keeps a disabled label inert', async () => {
     let detailRead = 0;
     const fetchMock = vi.fn(async (input: string | URL | Request) => {

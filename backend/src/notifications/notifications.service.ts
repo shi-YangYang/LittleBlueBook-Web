@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 
 import { AuthService } from '../auth/auth.service.js';
 import { ApiException } from '../common/api-exception.js';
@@ -8,6 +8,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import type { NotificationType } from '../generated/prisma/client.js';
 import { MEDIA_STORAGE, type MediaStorage } from '../media/media.types.js';
 import { publicAvatar } from '../profile/profile-avatar.js';
+import { SafetyService } from '../safety/safety.service.js';
 import type {
   NotificationItem,
   NotificationPage,
@@ -49,6 +50,7 @@ export class NotificationsService {
     @Inject(AuthService) private readonly auth: AuthService,
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(MEDIA_STORAGE) private readonly media: MediaStorage,
+    @Optional() @Inject(SafetyService) private readonly safety?: SafetyService,
   ) {}
 
   async list(
@@ -79,6 +81,9 @@ export class NotificationsService {
     const notifications = await this.prisma.notification.findMany({
       where: {
         recipientId: user.id,
+        ...(this.safety
+          ? { suppressedAt: null, actor: { status: 'ACTIVE' as const } }
+          : {}),
         ...(types ? { type: { in: types } } : {}),
         ...cursorWhere,
       },
@@ -126,6 +131,7 @@ export class NotificationsService {
             rootCommentId: true,
             content: true,
             deletedAt: true,
+            moderationStatus: true,
           },
         },
       },
@@ -154,7 +160,11 @@ export class NotificationsService {
     const user = await this.requireUser(sessionId);
     return {
       unreadCount: await this.prisma.notification.count({
-        where: { recipientId: user.id, readAt: null },
+        where: {
+          recipientId: user.id,
+          readAt: null,
+          ...(this.safety ? { suppressedAt: null } : {}),
+        },
       }),
     };
   }
@@ -170,7 +180,11 @@ export class NotificationsService {
 
     return this.prisma.$transaction(async (transaction) => {
       const notification = await transaction.notification.findFirst({
-        where: { id: notificationId, recipientId: user.id },
+        where: {
+          id: notificationId,
+          recipientId: user.id,
+          ...(this.safety ? { suppressedAt: null } : {}),
+        },
         select: { id: true, readAt: true },
       });
       if (!notification) {
@@ -184,6 +198,7 @@ export class NotificationsService {
             id: notificationId,
             recipientId: user.id,
             readAt: null,
+            ...(this.safety ? { suppressedAt: null } : {}),
           },
           data: { readAt },
         });
@@ -192,7 +207,11 @@ export class NotificationsService {
         id: notification.id,
         readAt: readAt.toISOString(),
         unreadCount: await transaction.notification.count({
-          where: { recipientId: user.id, readAt: null },
+          where: {
+            recipientId: user.id,
+            readAt: null,
+            ...(this.safety ? { suppressedAt: null } : {}),
+          },
         }),
       };
     });
@@ -204,13 +223,21 @@ export class NotificationsService {
     const user = await this.requireUser(sessionId);
     return this.prisma.$transaction(async (transaction) => {
       const result = await transaction.notification.updateMany({
-        where: { recipientId: user.id, readAt: null },
+        where: {
+          recipientId: user.id,
+          readAt: null,
+          ...(this.safety ? { suppressedAt: null } : {}),
+        },
         data: { readAt: new Date() },
       });
       return {
         updatedCount: result.count,
         unreadCount: await transaction.notification.count({
-          where: { recipientId: user.id, readAt: null },
+          where: {
+            recipientId: user.id,
+            readAt: null,
+            ...(this.safety ? { suppressedAt: null } : {}),
+          },
         }),
       };
     });
@@ -247,6 +274,7 @@ export class NotificationsService {
       rootCommentId: string | null;
       content: string;
       deletedAt: Date | null;
+      moderationStatus: 'VISIBLE' | 'HIDDEN';
     } | null;
   }): NotificationItem {
     const actorNickname = notification.actor?.nickname ?? '该用户已注销';
@@ -298,14 +326,17 @@ export class NotificationsService {
                 notification.comment?.id ??
                 null,
               preview:
-                notification.comment && !notification.comment.deletedAt
+                notification.comment &&
+                !notification.comment.deletedAt &&
+                notification.comment.moderationStatus !== 'HIDDEN'
                   ? Array.from(notification.comment.content)
                       .slice(0, 200)
                       .join('')
                   : null,
               deleted:
                 notification.comment === null ||
-                Boolean(notification.comment.deletedAt),
+                Boolean(notification.comment.deletedAt) ||
+                notification.comment?.moderationStatus === 'HIDDEN',
             }
           : null,
     };

@@ -183,8 +183,13 @@ test('persists idempotent two-account interactions and enforces permissions', as
     `${apiUrl}/notes/${noteId}/comments/${commentResult.comment.id}`,
     { headers: cookie(authorSession) },
   );
-  expect(authorDelete.status()).toBe(200);
-  expect((await authorDelete.json()).data.total).toBe(0);
+  expect(authorDelete.status()).toBe(403);
+  const ownerDelete = await request.delete(
+    `${apiUrl}/notes/${noteId}/comments/${commentResult.comment.id}`,
+    { headers: cookie(viewerSession) },
+  );
+  expect(ownerDelete.status()).toBe(200);
+  expect((await ownerDelete.json()).data.total).toBe(0);
 
   expect(
     (

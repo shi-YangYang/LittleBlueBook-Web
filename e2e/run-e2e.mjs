@@ -427,6 +427,24 @@ async function seedUsersAndSessions() {
       '关注管理蓝友',
       '0000000130',
     ],
+    [
+      '00000000-0000-4000-8000-000000000131',
+      'spec015-reporter@example.test',
+      '治理举报用户',
+      '0000000131',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000132',
+      'spec015-target@example.test',
+      '治理目标用户',
+      '0000000132',
+    ],
+    [
+      '00000000-0000-4000-8000-000000000133',
+      'spec015-admin@example.test',
+      '治理管理员',
+      '0000000133',
+    ],
     ...Array.from({ length: 21 }, (_, index) => {
       const suffix = index + 201;
       return [
@@ -467,6 +485,17 @@ async function seedUsersAndSessions() {
       sql,
     ),
     { env: composeEnvironment },
+  );
+
+  await runPnpm(
+    [
+      '--filter',
+      'backend',
+      'admin:role',
+      'grant',
+      'spec015-admin@example.test',
+    ],
+    { env: applicationEnvironment },
   );
 
   await run(
@@ -575,13 +604,17 @@ async function seedUsersAndSessions() {
     ['spec014-webkit-author-session', '00000000-0000-4000-8000-000000000128'],
     ['spec014-viewer-session', '00000000-0000-4000-8000-000000000129'],
     ['spec014-following-owner-session', '00000000-0000-4000-8000-000000000130'],
+    ['spec015-reporter-session', '00000000-0000-4000-8000-000000000131'],
+    ['spec015-target-session', '00000000-0000-4000-8000-000000000132'],
+    ['spec015-admin-session', '00000000-0000-4000-8000-000000000133', 2],
   ];
-  for (const [sessionId, userId] of sessions) {
+  for (const [sessionId, userId, authVersion] of sessions) {
     const key =
       'auth:session:' + createHash('sha256').update(sessionId).digest('hex');
     const value = JSON.stringify({
       userId,
       createdAt: new Date().toISOString(),
+      ...(authVersion ? { authVersion } : {}),
     });
     await run(
       dockerCommand,
@@ -764,6 +797,17 @@ async function verifyLegacyMigrations() {
       'prisma',
       'migrations',
       '20260809000100_bound_media_cleanup_retries',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const contentGovernanceSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260810000100_add_content_governance',
       'migration.sql',
     ),
     'utf8',
@@ -974,6 +1018,14 @@ async function verifyLegacyMigrations() {
     '-v',
     'ON_ERROR_STOP=1',
     '-c',
+    contentGovernanceSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
     channelSeedSql,
   );
   await psql(
@@ -1067,6 +1119,43 @@ async function verifyLegacyMigrations() {
           AND e.enumlabel = 'EXHAUSTED'
       ) THEN
         RAISE EXCEPTION 'SPEC-014 bounded media cleanup status missing';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM "users"
+        WHERE "id" = '00000000-0000-4000-8000-000000000099'
+          AND "role" = 'USER'
+          AND "status" = 'ACTIVE'
+          AND "authVersion" = 1
+      ) OR NOT EXISTS (
+        SELECT 1 FROM "notes"
+        WHERE "id" = '00000000-0000-4000-8000-000000000098'
+          AND "moderationStatus" = 'VISIBLE'
+      ) OR NOT EXISTS (
+        SELECT 1 FROM "note_comments"
+        WHERE "id" = '00000000-0000-4000-8000-000000000096'
+          AND "moderationStatus" = 'VISIBLE'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-015 governance defaults changed historical rows';
+      END IF;
+      IF (SELECT count(*) FROM "user_blocks") <> 0
+         OR (SELECT count(*) FROM "reports") <> 0
+         OR (SELECT count(*) FROM "moderation_audits") <> 0 THEN
+        RAISE EXCEPTION 'SPEC-015 unexpectedly backfilled governance records';
+      END IF;
+      IF (
+        SELECT count(*) FROM pg_indexes
+        WHERE indexname IN (
+          'reports_one_pending_per_reporter_target_idx',
+          'reports_status_targetType_createdAt_id_idx',
+          'user_blocks_blockerId_createdAt_blockedId_idx',
+          'notifications_recipientId_suppressedAt_createdAt_id_idx',
+          'moderation_audits_targetType_targetId_createdAt_id_idx'
+        )
+      ) <> 5 OR NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'users_authVersion_positive'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-015 governance constraints or indexes missing';
       END IF;
       IF (SELECT count(*) FROM "note_likes") <> 0
          OR (SELECT count(*) FROM "note_favorites") <> 1

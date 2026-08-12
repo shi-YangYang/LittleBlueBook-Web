@@ -47,7 +47,15 @@ describe('MoreMenu', () => {
 
     expect(
       screen.getAllByRole('menuitem').map((item) => item.textContent),
-    ).toEqual(['编辑资料', '帮助与反馈', '用户协议', '隐私政策', '退出登录']);
+    ).toEqual([
+      '编辑资料',
+      '我的举报',
+      '黑名单管理',
+      '帮助与反馈',
+      '用户协议',
+      '隐私政策',
+      '退出登录',
+    ]);
     fireEvent.click(screen.getByRole('menuitem', { name: '退出登录' }));
     await waitFor(() => expect(onLoggedOut).toHaveBeenCalledTimes(1));
     expect(fetch).toHaveBeenCalledTimes(1);

@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { createHmac, randomBytes } from 'node:crypto';
 
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { AuthService } from '../auth/auth.service.js';
@@ -19,6 +19,7 @@ import {
 import { RedisService } from '../redis/redis.service.js';
 import type { AppEnvironment } from '../config/environment.js';
 import { publicAvatar } from '../profile/profile-avatar.js';
+import { SafetyService } from '../safety/safety.service.js';
 import type {
   NoteCard,
   NoteDetail,
@@ -63,6 +64,7 @@ export class NotesService {
     @Inject(RedisService) private readonly redis: RedisService,
     @Inject(ConfigService)
     private readonly config: ConfigService<AppEnvironment, true>,
+    @Optional() @Inject(SafetyService) private readonly safety?: SafetyService,
   ) {}
 
   async publish(
@@ -243,7 +245,11 @@ export class NotesService {
     if (sessionId) await this.auth.assertWriteAllowed(sessionId);
     if (!UUID_PATTERN.test(noteId)) throw this.notFound();
     const note = await this.prisma.note.findFirst({
-      where: { id: noteId, authorId: user.id },
+      where: {
+        id: noteId,
+        authorId: user.id,
+        moderationStatus: 'VISIBLE',
+      },
       select: {
         id: true,
         contentType: true,
@@ -324,7 +330,11 @@ export class NotesService {
     if (sessionId) await this.auth.assertWriteAllowed(sessionId);
     if (!UUID_PATTERN.test(noteId)) throw this.notFound();
     const current = await this.prisma.note.findFirst({
-      where: { id: noteId, authorId: user.id },
+      where: {
+        id: noteId,
+        authorId: user.id,
+        moderationStatus: 'VISIBLE',
+      },
       select: {
         id: true,
         contentType: true,
@@ -473,18 +483,31 @@ export class NotesService {
         Array<{
           authorId: string;
           contentVersion: number;
+          moderationStatus: 'VISIBLE' | 'HIDDEN';
         }>
       >(Prisma.sql`
-        SELECT "authorId", "contentVersion"
+        SELECT "authorId", "contentVersion", "moderationStatus"
         FROM "notes"
         WHERE "id" = ${noteId}::uuid
         FOR UPDATE
       `);
       const locked = rows[0];
-      if (!locked || locked.authorId !== user.id) throw this.notFound();
+      if (
+        !locked ||
+        locked.authorId !== user.id ||
+        locked.moderationStatus === 'HIDDEN'
+      )
+        throw this.notFound();
       if (locked.contentVersion !== expectedContentVersion) {
         throw this.versionConflict();
       }
+      const commentRows = await transaction.$queryRaw<Array<{ id: string }>>`
+        SELECT id
+        FROM "note_comments"
+        WHERE "noteId" = ${noteId}::uuid
+        ORDER BY id
+        FOR UPDATE
+      `;
       const note = await transaction.note.findUnique({
         where: { id: noteId },
         select: {
@@ -511,6 +534,12 @@ export class NotesService {
         where: { noteId },
         data: { rootCommentId: null, replyToId: null, replyToAuthorId: null },
       });
+      await this.safety?.markTargetUnavailable(
+        transaction,
+        'COMMENT',
+        commentRows.map((comment) => comment.id),
+      );
+      await this.safety?.markTargetUnavailable(transaction, 'NOTE', noteId);
       await transaction.note.delete({ where: { id: noteId } });
       return keys;
     });
@@ -527,6 +556,8 @@ export class NotesService {
     }
     const viewer = await this.auth.currentUser(sessionId);
     const viewerId = viewer?.id ?? '00000000-0000-0000-0000-000000000000';
+    const blockedIds =
+      viewer && this.safety ? await this.safety.blockedIds(viewer.id) : [];
     const note = await this.prisma.note.findUnique({
       where: { id: noteId },
       select: {
@@ -538,12 +569,14 @@ export class NotesService {
         editedAt: true,
         contentVersion: true,
         viewCount: true,
+        moderationStatus: true,
         author: {
           select: {
             id: true,
             nickname: true,
             avatarObjectKey: true,
             ageRestrictedAt: true,
+            status: true,
             followers: {
               where: { followerId: viewerId },
               take: 1,
@@ -590,7 +623,14 @@ export class NotesService {
           select: {
             likes: true,
             favorites: true,
-            comments: { where: { deletedAt: null } },
+            comments: {
+              where: {
+                deletedAt: null,
+                moderationStatus: 'VISIBLE',
+                authorId: { notIn: blockedIds },
+                author: { status: 'ACTIVE' },
+              },
+            },
           },
         },
       },
@@ -598,17 +638,23 @@ export class NotesService {
     if (
       !note ||
       note.author.ageRestrictedAt ||
+      note.author.status === 'SUSPENDED' ||
+      (note.moderationStatus === 'HIDDEN' && viewer?.id !== note.author.id) ||
       (note.contentType === 'IMAGE' && note.images.length < 1) ||
       (note.contentType === 'VIDEO' && !note.video)
     ) {
       throw this.notFound();
     }
+    if (viewer) {
+      await this.safety?.assertNotBlocked(viewer.id, note.author.id);
+    }
 
     return {
       id: note.id,
       contentType: note.contentType,
-      title: note.title,
-      content: note.content,
+      title:
+        note.moderationStatus === 'HIDDEN' ? '内容已被管理员隐藏' : note.title,
+      content: note.moderationStatus === 'HIDDEN' ? '' : note.content,
       createdAt: note.createdAt.toISOString(),
       editedAt: note.editedAt?.toISOString() ?? null,
       author: this.author(
@@ -623,13 +669,17 @@ export class NotesService {
             navigable: note.channel.enabled,
           }
         : null,
-      images: note.images.map((image) => ({
-        url: this.media.publicUrl(image.objectKey),
-        width: image.width,
-        height: image.height,
-      })),
+      images: (note.moderationStatus === 'HIDDEN' ? [] : note.images).map(
+        (image) => ({
+          url: this.media.publicUrl(image.objectKey),
+          width: image.width,
+          height: image.height,
+        }),
+      ),
       video:
-        note.contentType === 'VIDEO' && note.video
+        note.moderationStatus !== 'HIDDEN' &&
+        note.contentType === 'VIDEO' &&
+        note.video
           ? {
               url: this.media.publicUrl(note.video.videoObjectKey),
               posterUrl: this.media.publicUrl(note.video.coverObjectKey),
@@ -639,24 +689,33 @@ export class NotesService {
             }
           : null,
       interactions: {
-        likes: note._count.likes,
-        favorites: note._count.favorites,
-        comments: note._count.comments,
-        views: note.viewCount,
+        likes: note.moderationStatus === 'HIDDEN' ? 0 : note._count.likes,
+        favorites:
+          note.moderationStatus === 'HIDDEN' ? 0 : note._count.favorites,
+        comments: note.moderationStatus === 'HIDDEN' ? 0 : note._count.comments,
+        views: note.moderationStatus === 'HIDDEN' ? 0 : note.viewCount,
       },
       viewer: {
         authenticated: Boolean(viewer),
         isAuthor: viewer?.id === note.author.id,
-        liked: note.likes.length > 0,
-        favorited: note.favorites.length > 0,
+        liked: note.moderationStatus !== 'HIDDEN' && note.likes.length > 0,
+        favorited:
+          note.moderationStatus !== 'HIDDEN' && note.favorites.length > 0,
         followingAuthor: note.author.followers.length > 0,
-        canLike: viewer?.id !== note.author.id,
-        canFollow: viewer?.id !== note.author.id,
+        canLike:
+          note.moderationStatus !== 'HIDDEN' && viewer?.id !== note.author.id,
+        canFollow:
+          note.moderationStatus !== 'HIDDEN' && viewer?.id !== note.author.id,
+        canReport:
+          note.moderationStatus !== 'HIDDEN' &&
+          Boolean(viewer) &&
+          viewer?.id !== note.author.id,
       },
       management:
-        viewer?.id === note.author.id
+        viewer?.id === note.author.id && note.moderationStatus !== 'HIDDEN'
           ? { contentVersion: note.contentVersion }
           : null,
+      moderationHidden: note.moderationStatus === 'HIDDEN',
     };
   }
 
@@ -688,9 +747,20 @@ export class NotesService {
     const result = await this.prisma.$transaction(async (transaction) => {
       const note = await transaction.note.findUnique({
         where: { id: noteId },
-        select: { authorId: true, viewCount: true },
+        select: {
+          authorId: true,
+          viewCount: true,
+          moderationStatus: true,
+          author: { select: { status: true } },
+        },
       });
-      if (!note) throw this.notFound();
+      if (
+        !note ||
+        note.moderationStatus === 'HIDDEN' ||
+        note.author?.status === 'SUSPENDED'
+      )
+        throw this.notFound();
+      if (viewer) await this.safety?.assertNotBlocked(viewer.id, note.authorId);
       if (viewer?.id === note.authorId) {
         return { counted: false, viewCount: note.viewCount };
       }
@@ -751,6 +821,8 @@ export class NotesService {
       );
     }
     const cursor = this.decodeCursor(cursorInput, filter.scope);
+    const blockedIds =
+      viewerId && this.safety ? await this.safety.blockedIds(viewerId) : [];
     const cursorWhere = cursor
       ? {
           OR: [
@@ -764,7 +836,14 @@ export class NotesService {
       : {};
     const notes = await this.prisma.note.findMany({
       where: {
-        author: { ageRestrictedAt: null },
+        author: {
+          ageRestrictedAt: null,
+          status: 'ACTIVE',
+          id: { notIn: blockedIds },
+        },
+        ...(filter.authorId && filter.authorId === viewerId
+          ? {}
+          : { moderationStatus: 'VISIBLE' as const }),
         ...(filter.authorId ? { authorId: filter.authorId } : {}),
         ...(filter.channelId ? { channelId: filter.channelId } : {}),
         ...(filter.contentType ? { contentType: filter.contentType } : {}),
@@ -779,6 +858,7 @@ export class NotesService {
         createdAt: true,
         viewCount: true,
         contentVersion: true,
+        moderationStatus: true,
         author: {
           select: { id: true, nickname: true, avatarObjectKey: true },
         },
@@ -847,6 +927,7 @@ export class NotesService {
       );
     }
     const scope = `${kind}:${userId}`;
+    const blockedIds = this.safety ? await this.safety.blockedIds(userId) : [];
     const cursor = this.decodeCursor(cursorInput, scope);
     const cursorWhere = cursor
       ? {
@@ -900,8 +981,15 @@ export class NotesService {
     const visibleWhere = {
       userId,
       ...cursorWhere,
-      note: { author: { ageRestrictedAt: null } },
-    };
+      note: {
+        moderationStatus: 'VISIBLE',
+        author: {
+          ageRestrictedAt: null,
+          status: 'ACTIVE',
+          id: { notIn: blockedIds },
+        },
+      },
+    } satisfies Prisma.NoteLikeWhereInput;
     const relations =
       kind === 'likes'
         ? await this.prisma.noteLike.findMany({
@@ -958,10 +1046,12 @@ export class NotesService {
       _count: { likes: number };
       viewCount: number;
       contentVersion?: number;
+      moderationStatus?: 'VISIBLE' | 'HIDDEN';
     },
     viewerId?: string,
     manageable = false,
   ): NoteCard {
+    const moderationHidden = note.moderationStatus === 'HIDDEN';
     const imageCover = note.images[0];
     const cover =
       note.contentType === 'VIDEO' && note.video
@@ -981,26 +1071,36 @@ export class NotesService {
     return {
       id: note.id,
       contentType: note.contentType,
-      title: note.title,
-      cover: {
-        url: this.media.publicUrl(cover.objectKey),
-        width: cover.width,
-        height: cover.height,
-      },
+      title:
+        note.moderationStatus === 'HIDDEN' ? '内容已被管理员隐藏' : note.title,
+      cover: moderationHidden
+        ? {
+            url: '/brand/littlebluebook-logo.svg',
+            width: 4,
+            height: 3,
+          }
+        : {
+            url: this.media.publicUrl(cover.objectKey),
+            width: cover.width,
+            height: cover.height,
+          },
       author: this.author(
         note.author.id,
         note.author.nickname,
         note.author.avatarObjectKey,
       ),
-      likes: note._count.likes,
-      liked: (note.likes?.length ?? 0) > 0,
-      canLike: viewerId !== note.author.id,
-      views: note.viewCount,
+      likes: moderationHidden ? 0 : note._count.likes,
+      liked: moderationHidden ? false : (note.likes?.length ?? 0) > 0,
+      canLike: !moderationHidden && viewerId !== note.author.id,
+      views: moderationHidden ? 0 : note.viewCount,
       videoDurationMs:
-        note.contentType === 'VIDEO' ? (note.video?.durationMs ?? null) : null,
+        !moderationHidden && note.contentType === 'VIDEO'
+          ? (note.video?.durationMs ?? null)
+          : null,
       ...(manageable && note.contentVersion
         ? { management: { contentVersion: note.contentVersion } }
         : {}),
+      ...(note.moderationStatus === 'HIDDEN' ? { moderationHidden: true } : {}),
     };
   }
 
@@ -1096,12 +1196,17 @@ export class NotesService {
     },
   ): Promise<void> {
     const updated = await transaction.note.updateMany({
-      where: { id: noteId, authorId, contentVersion: expectedContentVersion },
+      where: {
+        id: noteId,
+        authorId,
+        contentVersion: expectedContentVersion,
+        moderationStatus: 'VISIBLE',
+      },
       data: { ...data, contentVersion: { increment: 1 } },
     });
     if (updated.count === 1) return;
     const stillExists = await transaction.note.findFirst({
-      where: { id: noteId, authorId },
+      where: { id: noteId, authorId, moderationStatus: 'VISIBLE' },
       select: { id: true },
     });
     if (!stillExists) throw this.notFound();

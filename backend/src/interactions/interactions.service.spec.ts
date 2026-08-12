@@ -20,9 +20,15 @@ function dependencies() {
   const store = {
     user: {
       findUnique: jest.fn(async () => ({ id: authorId })),
+      findFirst: jest.fn(async () => ({ id: authorId })),
     },
     note: {
-      findUnique: jest.fn(async () => ({ id: noteId, authorId })),
+      findUnique: jest.fn(async () => ({
+        id: noteId,
+        authorId,
+        moderationStatus: 'VISIBLE' as const,
+        author: { status: 'ACTIVE' as const },
+      })),
     },
     noteLike: {
       createMany: jest.fn(async () => ({ count: 1 })),
@@ -55,6 +61,16 @@ function dependencies() {
         id: commentId,
         noteId,
         authorId: viewer.id,
+        deletedAt: null,
+        moderationStatus: 'VISIBLE' as const,
+        author: { status: 'ACTIVE' as const },
+        note: {
+          authorId,
+          moderationStatus: 'VISIBLE' as const,
+          author: { status: 'ACTIVE' as const },
+        },
+        rootCommentId: null,
+        _count: { replies: 0, referencedBy: 0 },
       })),
       create: jest.fn(async () => ({
         id: commentId,
@@ -65,6 +81,7 @@ function dependencies() {
         author: { nickname: viewer.nickname, avatarObjectKey: null },
       })),
       delete: jest.fn(async () => ({})),
+      update: jest.fn(async () => ({})),
       count: jest.fn(async () => 1),
     },
     notification: {
@@ -132,6 +149,8 @@ describe('InteractionsService', () => {
     prisma.note.findUnique.mockResolvedValue({
       id: noteId,
       authorId: viewer.id,
+      moderationStatus: 'VISIBLE',
+      author: { status: 'ACTIVE' },
     });
 
     await expect(
@@ -251,12 +270,22 @@ describe('InteractionsService', () => {
 
     await expect(
       service.deleteComment('session', noteId, commentId),
-    ).resolves.toEqual({ deleted: true, placeholder: false, total: 1 });
+    ).resolves.toEqual({ deleted: true, placeholder: true, total: 1 });
 
     prisma.noteComment.findUnique.mockResolvedValue({
       id: commentId,
       noteId,
       authorId: '00000000-0000-4000-8000-000000000009',
+      deletedAt: null,
+      moderationStatus: 'VISIBLE',
+      author: { status: 'ACTIVE' },
+      note: {
+        authorId,
+        moderationStatus: 'VISIBLE',
+        author: { status: 'ACTIVE' },
+      },
+      rootCommentId: null,
+      _count: { replies: 0, referencedBy: 0 },
     });
     await expect(
       service.deleteComment('session', noteId, commentId),
@@ -267,10 +296,14 @@ describe('InteractionsService', () => {
     prisma.note.findUnique.mockResolvedValue({
       id: noteId,
       authorId: viewer.id,
+      moderationStatus: 'VISIBLE',
+      author: { status: 'ACTIVE' },
     });
     await expect(
       service.deleteComment('session', noteId, commentId),
-    ).resolves.toEqual({ deleted: true, placeholder: false, total: 1 });
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'COMMENT_DELETE_FORBIDDEN' }),
+    });
   });
 
   it('requires a valid session before every interaction write', async () => {

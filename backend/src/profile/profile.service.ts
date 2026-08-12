@@ -1,7 +1,13 @@
 import { Buffer } from 'node:buffer';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
-import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { AuthService } from '../auth/auth.service.js';
@@ -26,6 +32,7 @@ import type {
   ProfileSettingsUpdateResult,
 } from './profile.types.js';
 import type { AppEnvironment } from '../config/environment.js';
+import { SafetyService } from '../safety/safety.service.js';
 
 const GENDER_LABELS: Record<Gender, ProfileGender> = {
   MALE: '男',
@@ -61,6 +68,7 @@ export class ProfileService {
     @Inject(MEDIA_STORAGE) private readonly media: MediaStorage,
     @Inject(ConfigService)
     private readonly config: ConfigService<AppEnvironment, true>,
+    @Optional() @Inject(SafetyService) private readonly safety?: SafetyService,
   ) {}
 
   async current(sessionId: string | undefined): Promise<CurrentProfile> {
@@ -125,11 +133,15 @@ export class ProfileService {
     cursorInput: string | undefined,
   ): Promise<FollowingPage> {
     const userId = await this.requireUserId(sessionId);
+    const blockedIds = this.safety ? await this.safety.blockedIds(userId) : [];
     const cursor = this.decodeFollowingCursor(cursorInput, userId);
     const rows = await this.prisma.userFollow.findMany({
       where: {
         followerId: userId,
-        followed: { ageRestrictedAt: null },
+        followed: this.safety
+          ? { ageRestrictedAt: null, status: 'ACTIVE' }
+          : { ageRestrictedAt: null },
+        ...(this.safety ? { followedId: { notIn: blockedIds } } : {}),
         ...(cursor
           ? {
               OR: [

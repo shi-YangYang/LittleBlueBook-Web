@@ -22,6 +22,7 @@ export type NoteCardData = {
   management?: {
     contentVersion: number;
   };
+  moderationHidden?: boolean;
 };
 
 export type NotePageData = {
@@ -68,10 +69,12 @@ export type NoteDetailData = {
     followingAuthor: boolean;
     canLike: boolean;
     canFollow: boolean;
+    canReport: boolean;
   };
   management: {
     contentVersion: number;
   } | null;
+  moderationHidden?: boolean;
 };
 
 export type NoteCommentData = {
@@ -80,6 +83,7 @@ export type NoteCommentData = {
   content: string | null;
   createdAt: string;
   deleted: boolean;
+  moderationHidden: boolean;
   author: {
     id: string;
     nickname: string;
@@ -96,6 +100,7 @@ export type NoteCommentData = {
   likes: number;
   liked: boolean;
   canLike: boolean;
+  canReport: boolean;
   replies: NoteCommentData[];
   replyCount: number;
   repliesNextCursor: string | null;

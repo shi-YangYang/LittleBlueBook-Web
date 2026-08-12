@@ -52,6 +52,55 @@ enum MediaCleanupStatus {
   EXHAUSTED
 }
 
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum ModerationStatus {
+  VISIBLE
+  HIDDEN
+}
+
+enum ReportTargetType {
+  NOTE
+  COMMENT
+  USER
+}
+
+enum ReportReason {
+  SEXUAL
+  VIOLENCE
+  HATE
+  HARASSMENT
+  PERSONAL_ATTACK
+  SPAM
+  INFRINGEMENT
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  ACTIONED
+  DISMISSED
+  TARGET_UNAVAILABLE
+}
+
+enum ModerationAction {
+  DISMISS_REPORT
+  HIDE_NOTE
+  RESTORE_NOTE
+  HIDE_COMMENT
+  RESTORE_COMMENT
+  SUSPEND_USER
+  RESTORE_USER
+}
+
 model User {
   id                    String               @id @default(uuid()) @db.Uuid
   email                 String               @unique @db.VarChar(320)
@@ -67,6 +116,9 @@ model User {
   createdAt             DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime             @updatedAt @db.Timestamptz(3)
   lastLoginAt           DateTime             @default(now()) @db.Timestamptz(3)
+  role                  UserRole             @default(USER)
+  status                UserStatus           @default(ACTIVE)
+  authVersion           Int                  @default(1)
   notes                 Note[]
   noteLikes             NoteLike[]
   noteFavorites         NoteFavorite[]
@@ -82,6 +134,10 @@ model User {
   conversationsAsSecond DirectConversation[] @relation("ConversationSecondParticipant")
   sentDirectMessages    DirectMessage[]
   legalAcceptances      LegalAcceptance[]
+  blocksCreated         UserBlock[]          @relation("Blocker")
+  blocksReceived        UserBlock[]          @relation("Blocked")
+  reportsCreated        Report[]             @relation("ReportReporter")
+  moderationAudits      ModerationAudit[]    @relation("ModerationAdministrator")
 
   @@map("users")
 }
@@ -148,6 +204,7 @@ model Note {
   contentType     NoteContentType   @default(IMAGE)
   contentVersion  Int               @default(1)
   editedAt        DateTime?         @db.Timestamptz(3)
+  moderationStatus ModerationStatus @default(VISIBLE)
   author          User              @relation(fields: [authorId], references: [id], onDelete: Restrict)
   channel         Channel           @relation(fields: [channelId], references: [id], onDelete: Restrict)
   images          NoteImage[]
@@ -218,6 +275,7 @@ model NoteComment {
   replyToAuthorId String?        @db.Uuid
   content         String         @db.VarChar(500)
   deletedAt       DateTime?      @db.Timestamptz(3)
+  moderationStatus ModerationStatus @default(VISIBLE)
   createdAt       DateTime       @default(now()) @db.Timestamptz(3)
   note            Note           @relation(fields: [noteId], references: [id], onDelete: Cascade)
   author          User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
@@ -321,6 +379,7 @@ model Notification {
   commentId   String?          @db.Uuid
   createdAt   DateTime         @default(now()) @db.Timestamptz(3)
   readAt      DateTime?        @db.Timestamptz(3)
+  suppressedAt DateTime?       @db.Timestamptz(3)
   recipient   User             @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
   actor       User?            @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
   note        Note?            @relation(fields: [noteId], references: [id], onDelete: SetNull)
@@ -329,7 +388,56 @@ model Notification {
   @@index([recipientId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([recipientId, type, createdAt(sort: Desc), id(sort: Desc)])
   @@index([recipientId, readAt])
+  @@index([recipientId, suppressedAt, createdAt(sort: Desc), id(sort: Desc)])
   @@map("notifications")
+}
+
+model UserBlock {
+  blockerId String   @db.Uuid
+  blockedId String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedId])
+  @@index([blockerId, createdAt(sort: Desc), blockedId(sort: Desc)])
+  @@index([blockedId, blockerId])
+  @@map("user_blocks")
+}
+
+model Report {
+  id         String           @id @default(uuid()) @db.Uuid
+  reporterId String           @db.Uuid
+  targetType ReportTargetType
+  targetId   String           @db.Uuid
+  reason     ReportReason
+  details    String?          @db.VarChar(200)
+  status     ReportStatus     @default(PENDING)
+  createdAt  DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime         @updatedAt @db.Timestamptz(3)
+  reporter   User             @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+
+  @@index([reporterId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([status, targetType, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([targetType, targetId, status])
+  @@map("reports")
+}
+
+model ModerationAudit {
+  id              String           @id @default(uuid()) @db.Uuid
+  administratorId String           @db.Uuid
+  action          ModerationAction
+  targetType      ReportTargetType
+  targetId        String           @db.Uuid
+  reason          String           @db.VarChar(500)
+  previousState   String           @db.VarChar(64)
+  nextState       String           @db.VarChar(64)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+  administrator   User             @relation("ModerationAdministrator", fields: [administratorId], references: [id], onDelete: Restrict)
+
+  @@index([targetType, targetId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([administratorId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("moderation_audits")
 }
 
 model DirectConversation {

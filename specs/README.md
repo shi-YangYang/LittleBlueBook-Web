@@ -19,7 +19,8 @@
 | SPEC-011 | 评论互动、笔记浏览量与私信 | Accepted | `spec-011-engagement-and-messaging/` |
 | SPEC-012 | 服务条款、隐私政策与更多菜单 | Accepted | `spec-012-legal-terms-and-more/` |
 | SPEC-013 | 视频发布与播放 | Accepted | `spec-013-video-publishing-and-playback/` |
-| SPEC-014 | 笔记管理与关注列表 | Accepting | `spec-014-note-management-and-following/` |
+| SPEC-014 | 笔记管理与关注列表 | Accepted | `spec-014-note-management-and-following/` |
+| SPEC-015 | 内容治理与用户安全 | Accepting | `spec-015-content-governance-and-user-safety/` |
 
 ## 状态说明
 

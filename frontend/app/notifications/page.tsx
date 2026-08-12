@@ -309,10 +309,10 @@ function NotificationsPageContent() {
           setToast('相关用户已不存在');
         }
       } else if (notification.note) {
-        const commentQuery = notification.comment?.id
-          ? `?comment=${encodeURIComponent(notification.comment.id)}&root=${encodeURIComponent(notification.comment.rootCommentId ?? notification.comment.id)}`
-          : notification.comment?.deleted
-            ? '?commentDeleted=1'
+        const commentQuery = notification.comment?.deleted
+          ? '?commentDeleted=1'
+          : notification.comment?.id
+            ? `?comment=${encodeURIComponent(notification.comment.id)}&root=${encodeURIComponent(notification.comment.rootCommentId ?? notification.comment.id)}`
             : '';
         router.push(`/explore/${notification.note.id}${commentQuery}`);
       } else {
