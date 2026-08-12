@@ -1064,116 +1064,116 @@ export function NoteDetailView({ noteId }: { noteId: string }) {
     }
 
     return (
-    <li
-      key={comment.id}
-      className={`${reply ? 'comment-reply' : ''} ${highlightCommentId === comment.id ? 'comment-highlight' : ''}`}
-      data-comment-id={comment.id}
-    >
-      {comment.author ? (
-        <Avatar avatar={comment.author.avatar} className="comment-avatar" />
-      ) : (
-        <span
-          className="comment-avatar comment-avatar-deleted"
-          aria-hidden="true"
-        >
-          ×
-        </span>
-      )}
-      <div className="comment-body">
-        {comment.deleted ? (
-          <p className="deleted-comment">
-            {comment.moderationHidden ? '内容已被管理员隐藏' : '该评论已删除'}
-          </p>
+      <li
+        key={comment.id}
+        className={`${reply ? 'comment-reply' : ''} ${highlightCommentId === comment.id ? 'comment-highlight' : ''}`}
+        data-comment-id={comment.id}
+      >
+        {comment.author ? (
+          <Avatar avatar={comment.author.avatar} className="comment-avatar" />
         ) : (
-          <>
-            <div className="comment-heading">
-              <strong>{comment.author!.nickname}</strong>
-              {comment.isAuthor ? <span>作者</span> : null}
-              {comment.canDelete ? (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    deleteReturnFocusRef.current = event.currentTarget;
-                    setDeleteTarget(comment);
-                  }}
-                >
-                  删除
-                </button>
-              ) : null}
-              {comment.canReport ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setReportTarget({
-                      targetType: 'COMMENT',
-                      targetId: comment.id,
-                    })
-                  }
-                >
-                  举报
-                </button>
-              ) : null}
-            </div>
-            <p>
-              {comment.replyTo ? (
-                <span className="reply-target-label">
-                  {comment.replyTo.deleted
-                    ? '回复已删除的评论 '
-                    : `回复 @${comment.replyTo.nickname} `}
-                </span>
-              ) : null}
-              {comment.content}
+          <span
+            className="comment-avatar comment-avatar-deleted"
+            aria-hidden="true"
+          >
+            ×
+          </span>
+        )}
+        <div className="comment-body">
+          {comment.deleted ? (
+            <p className="deleted-comment">
+              {comment.moderationHidden ? '内容已被管理员隐藏' : '该评论已删除'}
             </p>
-            <div className="comment-meta-actions">
-              <time dateTime={comment.createdAt}>
-                {formatNoteTime(comment.createdAt)}
-              </time>
-              <button type="button" onClick={() => openReplyInput(comment)}>
-                回复
-              </button>
+          ) : (
+            <>
+              <div className="comment-heading">
+                <strong>{comment.author!.nickname}</strong>
+                {comment.isAuthor ? <span>作者</span> : null}
+                {comment.canDelete ? (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      deleteReturnFocusRef.current = event.currentTarget;
+                      setDeleteTarget(comment);
+                    }}
+                  >
+                    删除
+                  </button>
+                ) : null}
+                {comment.canReport ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setReportTarget({
+                        targetType: 'COMMENT',
+                        targetId: comment.id,
+                      })
+                    }
+                  >
+                    举报
+                  </button>
+                ) : null}
+              </div>
+              <p>
+                {comment.replyTo ? (
+                  <span className="reply-target-label">
+                    {comment.replyTo.deleted
+                      ? '回复已删除的评论 '
+                      : `回复 @${comment.replyTo.nickname} `}
+                  </span>
+                ) : null}
+                {comment.content}
+              </p>
+              <div className="comment-meta-actions">
+                <time dateTime={comment.createdAt}>
+                  {formatNoteTime(comment.createdAt)}
+                </time>
+                <button type="button" onClick={() => openReplyInput(comment)}>
+                  回复
+                </button>
+                <button
+                  type="button"
+                  className={comment.liked ? 'selected' : ''}
+                  disabled={commentLikeBusy.has(comment.id) || !comment.canLike}
+                  aria-pressed={comment.liked}
+                  aria-label={
+                    comment.canLike
+                      ? `${comment.liked ? '取消点赞' : '点赞评论'}，当前 ${comment.likes}`
+                      : `自己的评论不可点赞，当前 ${comment.likes}`
+                  }
+                  onClick={() => void setCommentLike(comment, !comment.liked)}
+                >
+                  <Icon name="heart" size={15} />
+                  <span>{comment.likes}</span>
+                </button>
+              </div>
+            </>
+          )}
+          {!reply && comment.replies.length > 0 ? (
+            <ul className="comment-replies">
+              {comment.replies.map((item) =>
+                renderComment(item, rootCommentId, true),
+              )}
+            </ul>
+          ) : null}
+          {!reply && comment.repliesNextCursor ? (
+            <div className="reply-pagination">
+              {replyErrorIds.has(rootCommentId) ? (
+                <span role="alert">加载回复失败，已保留现有内容</span>
+              ) : null}
               <button
                 type="button"
-                className={comment.liked ? 'selected' : ''}
-                disabled={commentLikeBusy.has(comment.id) || !comment.canLike}
-                aria-pressed={comment.liked}
-                aria-label={
-                  comment.canLike
-                    ? `${comment.liked ? '取消点赞' : '点赞评论'}，当前 ${comment.likes}`
-                    : `自己的评论不可点赞，当前 ${comment.likes}`
-                }
-                onClick={() => void setCommentLike(comment, !comment.liked)}
+                disabled={replyLoadingIds.has(rootCommentId)}
+                onClick={() => void loadMoreReplies(rootCommentId)}
               >
-                <Icon name="heart" size={15} />
-                <span>{comment.likes}</span>
+                {replyLoadingIds.has(rootCommentId)
+                  ? '加载中…'
+                  : `展开更多回复（共 ${comment.replyCount} 条）`}
               </button>
             </div>
-          </>
-        )}
-        {!reply && comment.replies.length > 0 ? (
-          <ul className="comment-replies">
-            {comment.replies.map((item) =>
-              renderComment(item, rootCommentId, true),
-            )}
-          </ul>
-        ) : null}
-        {!reply && comment.repliesNextCursor ? (
-          <div className="reply-pagination">
-            {replyErrorIds.has(rootCommentId) ? (
-              <span role="alert">加载回复失败，已保留现有内容</span>
-            ) : null}
-            <button
-              type="button"
-              disabled={replyLoadingIds.has(rootCommentId)}
-              onClick={() => void loadMoreReplies(rootCommentId)}
-            >
-              {replyLoadingIds.has(rootCommentId)
-                ? '加载中…'
-                : `展开更多回复（共 ${comment.replyCount} 条）`}
-            </button>
-          </div>
-        ) : null}
-      </div>
-    </li>
+          ) : null}
+        </div>
+      </li>
     );
   };
 

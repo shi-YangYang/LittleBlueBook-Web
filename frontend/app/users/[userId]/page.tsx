@@ -242,7 +242,9 @@ export default function PublicUserPage() {
                         type="button"
                         disabled={followingBusy}
                         aria-pressed={profile.viewer.following}
-                        onClick={() => void setFollow(!profile.viewer.following)}
+                        onClick={() =>
+                          void setFollow(!profile.viewer.following)
+                        }
                       >
                         {followingBusy
                           ? '处理中…'

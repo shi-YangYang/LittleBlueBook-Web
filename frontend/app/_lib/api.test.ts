@@ -36,12 +36,14 @@ describe('apiRequest email-code replay', () => {
   });
 
   it('does not retry an authoritative API rejection', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      response(
-        { code: 'RATE_LIMITED', message: '操作过于频繁，请稍后再试' },
-        429,
-      ),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        response(
+          { code: 'RATE_LIMITED', message: '操作过于频繁，请稍后再试' },
+          429,
+        ),
+      );
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     await expect(

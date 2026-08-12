@@ -20,11 +20,7 @@ import { MoreMenu } from './_components/more-menu';
 import type { PublicChannel, PublicChannelList } from './_lib/channels';
 import { lockDocumentScroll } from './_lib/document-scroll-lock';
 import { requestLegalStatusRefresh } from './_lib/legal-status-events';
-import {
-  apiRequest,
-  ApiRequestError,
-  type ApiErrorPayload,
-} from './_lib/api';
+import { apiRequest, ApiRequestError, type ApiErrorPayload } from './_lib/api';
 import { setAuthenticatedSession } from './_lib/auth-session-state';
 
 const SESSION_ENTRY_GRACE_MS = 250;
@@ -63,9 +59,7 @@ function getErrorMessage(error: unknown): string {
   }
 
   const payload =
-    error instanceof ApiRequestError
-      ? error.payload
-      : ({} as ApiErrorPayload);
+    error instanceof ApiRequestError ? error.payload : ({} as ApiErrorPayload);
   const remainingAttempts = payload?.details?.remainingAttempts;
 
   switch (error.message) {
