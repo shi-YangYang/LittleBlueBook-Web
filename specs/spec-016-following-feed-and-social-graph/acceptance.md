@@ -106,3 +106,11 @@
 ## 用户最终确认
 
 - 2026-08-14：用户明确确认“没有问题了”，同意 SPEC-016 验收完成并标记为 `Accepted`。
+
+## 提交后 CI 修复
+
+- 2026-08-14：GitHub Actions run `31799520644` 在 `Run unit and integration tests` 阶段失败；本地同一提交 `87f84d4` 复现为 `backend/test/auth-flow.spec.ts` 的 `/api/v1/profile/me` 期望 200、实际 500。
+- 根因：SPEC-016 的个人主页统计开始调用 `SafetyService.blockedIds()`，但认证流程的内存 Prisma 测试夹具没有实现其依赖的 `userBlock.findMany()`。
+- 用户明确要求不创建子 Agent，由协调 Agent 直接修复；仅在 `TestPrisma` 中补充返回空拉黑关系的最小 `userBlock.findMany` 测试实现，未修改业务代码或原有断言。
+- 定向验证：`backend/test/auth-flow.spec.ts` 1 个套件、5 个用例全部通过；受影响文件 ESLint、Prettier 与 `git diff --check` 通过。未重复全量测试、构建或 Browser E2E。
+- 本次为已验收功能的提交后测试夹具修复，不撤销 SPEC-016 的 `Accepted` 状态。

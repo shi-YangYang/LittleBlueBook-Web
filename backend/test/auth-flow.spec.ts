@@ -206,6 +206,20 @@ class TestPrisma {
     return callback(this);
   }
 
+  readonly userBlock = {
+    findMany: jest.fn(
+      async (input: {
+        where: {
+          OR: Array<{ blockerId: string } | { blockedId: string }>;
+        };
+        select: { blockerId: boolean; blockedId: boolean };
+      }): Promise<Array<{ blockerId: string; blockedId: string }>> => {
+        void input;
+        return [];
+      },
+    ),
+  };
+
   readonly userFollow = {
     count: jest.fn(async () => 0),
   };
