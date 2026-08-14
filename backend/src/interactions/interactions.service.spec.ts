@@ -12,6 +12,8 @@ const viewer = {
 const authorId = '00000000-0000-4000-8000-000000000002';
 const noteId = '00000000-0000-4000-8000-000000000003';
 const commentId = '00000000-0000-4000-8000-000000000004';
+const viewerBlockedId = '00000000-0000-4000-8000-000000000005';
+const targetBlockedId = '00000000-0000-4000-8000-000000000006';
 
 function dependencies() {
   const auth = {
@@ -44,6 +46,15 @@ function dependencies() {
       createMany: jest.fn(async () => ({ count: 1 })),
       deleteMany: jest.fn(async () => ({ count: 0 })),
       count: jest.fn(async () => 1),
+      findUnique: jest.fn(async () => null),
+    },
+    userBlock: {
+      findMany: jest.fn(
+        async (): Promise<
+          Array<{ blockerId: string; blockedId: string }>
+        > => [],
+      ),
+      count: jest.fn(async () => 0),
     },
     noteComment: {
       findMany: jest.fn(
@@ -189,6 +200,87 @@ describe('InteractionsService', () => {
     await service.setFavorite('session', noteId, false);
     await service.setFollow('session', authorId, false);
     expect(prisma.notification.create).not.toHaveBeenCalled();
+  });
+
+  it('returns authoritative follow counts and mutual state without deleting history', async () => {
+    const { service, prisma } = dependencies();
+    prisma.userFollow.count.mockResolvedValueOnce(4).mockResolvedValueOnce(7);
+    (prisma.userFollow.findUnique as jest.Mock).mockResolvedValueOnce({
+      followerId: authorId,
+    });
+
+    await expect(service.setFollow('session', authorId, true)).resolves.toEqual(
+      {
+        following: true,
+        followingCount: 4,
+        followerCount: 7,
+        followedBy: true,
+        mutual: true,
+      },
+    );
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: {
+        type: 'USER_FOLLOWED',
+        recipientId: authorId,
+        actorId: viewer.id,
+      },
+    });
+
+    prisma.notification.create.mockClear();
+    prisma.userFollow.count.mockResolvedValueOnce(3).mockResolvedValueOnce(6);
+    (prisma.userFollow.findUnique as jest.Mock).mockResolvedValueOnce({
+      followerId: authorId,
+    });
+    await expect(
+      service.setFollow('session', authorId, false),
+    ).resolves.toEqual({
+      following: false,
+      followingCount: 3,
+      followerCount: 6,
+      followedBy: true,
+      mutual: false,
+    });
+    expect(prisma.notification.create).not.toHaveBeenCalled();
+    expect(prisma.userFollow.deleteMany).toHaveBeenCalledWith({
+      where: { followerId: viewer.id, followedId: authorId },
+    });
+  });
+
+  it('counts only relationships accessible to the same viewer after third-party blocks', async () => {
+    const { service, prisma } = dependencies();
+    prisma.userBlock.findMany
+      .mockResolvedValueOnce([
+        { blockerId: viewer.id, blockedId: viewerBlockedId },
+      ])
+      .mockResolvedValueOnce([
+        { blockerId: targetBlockedId, blockedId: authorId },
+      ]);
+    prisma.userFollow.count.mockResolvedValueOnce(2).mockResolvedValueOnce(5);
+
+    await expect(service.setFollow('session', authorId, true)).resolves.toEqual(
+      {
+        following: true,
+        followingCount: 2,
+        followerCount: 5,
+        followedBy: false,
+        mutual: false,
+      },
+    );
+
+    expect(prisma.userFollow.count).toHaveBeenNthCalledWith(1, {
+      where: {
+        followerId: viewer.id,
+        followedId: { notIn: [viewerBlockedId] },
+        followed: { status: 'ACTIVE', ageRestrictedAt: null },
+      },
+    });
+    expect(prisma.userFollow.count).toHaveBeenNthCalledWith(2, {
+      where: {
+        followedId: authorId,
+        followerId: { notIn: [viewerBlockedId, targetBlockedId] },
+        follower: { status: 'ACTIVE', ageRestrictedAt: null },
+      },
+    });
   });
 
   it('publishes normalized plain text and rejects invalid comment lengths', async () => {

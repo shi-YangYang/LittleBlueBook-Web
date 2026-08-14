@@ -30,6 +30,7 @@ import type {
   PrivateProfileSettings,
   ProfileGender,
   ProfileSettingsUpdateResult,
+  RelationshipPage,
 } from './profile.types.js';
 import type { AppEnvironment } from '../config/environment.js';
 import { SafetyService } from '../safety/safety.service.js';
@@ -43,6 +44,8 @@ const GENDER_LABELS: Record<Gender, ProfileGender> = {
 const AVATAR_RESERVATION_TTL_MS = 5 * 60_000;
 const AVATAR_CLEANUP_LEASE_MS = 60_000;
 const AVATAR_CLEANUP_RETRY_MS = 60_000;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type UserProfileRecord = {
   nickname: string;
@@ -89,8 +92,8 @@ export class ProfileService {
     if (!user) throw this.authenticationRequired();
     const [following, followers, receivedLikes, receivedFavorites] =
       await Promise.all([
-        this.prisma.userFollow.count({ where: { followerId: user.id } }),
-        this.prisma.userFollow.count({ where: { followedId: user.id } }),
+        this.visibleRelationshipCount(user.id, 'following', user.id),
+        this.visibleRelationshipCount(user.id, 'followers', user.id),
         this.prisma.noteLike.count({
           where: { note: { authorId: user.id } },
         }),
@@ -131,65 +134,210 @@ export class ProfileService {
   async following(
     sessionId: string | undefined,
     cursorInput: string | undefined,
+    limitInput = 20,
   ): Promise<FollowingPage> {
     const userId = await this.requireUserId(sessionId);
-    const blockedIds = this.safety ? await this.safety.blockedIds(userId) : [];
-    const cursor = this.decodeFollowingCursor(cursorInput, userId);
-    const rows = await this.prisma.userFollow.findMany({
-      where: {
-        followerId: userId,
-        followed: this.safety
-          ? { ageRestrictedAt: null, status: 'ACTIVE' }
-          : { ageRestrictedAt: null },
-        ...(this.safety ? { followedId: { notIn: blockedIds } } : {}),
-        ...(cursor
-          ? {
-              OR: [
-                { createdAt: { lt: new Date(cursor.createdAt) } },
-                {
-                  createdAt: new Date(cursor.createdAt),
-                  followedId: { lt: cursor.followedId },
-                },
-              ],
-            }
-          : {}),
-      },
-      orderBy: [{ createdAt: 'desc' }, { followedId: 'desc' }],
-      take: 21,
-      select: {
-        followedId: true,
-        createdAt: true,
-        followed: {
-          select: {
-            nickname: true,
-            littleBlueBookId: true,
-            bio: true,
-            avatarObjectKey: true,
-          },
-        },
-      },
+    return this.relationships(
+      sessionId,
+      userId,
+      'following',
+      cursorInput,
+      limitInput,
+    );
+  }
+
+  async followers(
+    sessionId: string | undefined,
+    cursorInput: string | undefined,
+    limitInput = 20,
+  ): Promise<FollowingPage> {
+    const userId = await this.requireUserId(sessionId);
+    return this.relationships(
+      sessionId,
+      userId,
+      'followers',
+      cursorInput,
+      limitInput,
+    );
+  }
+
+  async relationships(
+    sessionId: string | undefined,
+    ownerId: string,
+    kind: 'following' | 'followers',
+    cursorInput: string | undefined,
+    limitInput = 20,
+  ): Promise<RelationshipPage> {
+    if (!UUID_PATTERN.test(ownerId)) throw this.userNotFound();
+    const pageSize = Number(limitInput);
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 20) {
+      throw new ApiException(
+        HttpStatus.BAD_REQUEST,
+        'PAGINATION_INVALID',
+        '分页参数无效',
+      );
+    }
+    const viewer = await this.auth.currentUser(sessionId);
+    const owner = await this.prisma.user.findFirst({
+      where: { id: ownerId, ageRestrictedAt: null, status: 'ACTIVE' },
+      select: { id: true },
     });
-    const hasMore = rows.length > 20;
-    const pageRows = hasMore ? rows.slice(0, 20) : rows;
+    if (!owner) throw this.userNotFound();
+    if (viewer) await this.safety?.assertNotBlocked(viewer.id, ownerId);
+    const viewerId = viewer?.id;
+    const ownerBlockedIds = this.safety
+      ? await this.safety.blockedIds(ownerId)
+      : [];
+    const viewerBlockedIds =
+      viewerId && viewerId !== ownerId && this.safety
+        ? await this.safety.blockedIds(viewerId)
+        : [];
+    const blockedIds = [...new Set([...ownerBlockedIds, ...viewerBlockedIds])];
+    const cursor = this.decodeRelationshipCursor(
+      cursorInput,
+      kind,
+      ownerId,
+      viewerId ?? 'anonymous',
+    );
+    const personSelect = {
+      nickname: true,
+      littleBlueBookId: true,
+      bio: true,
+      avatarObjectKey: true,
+    } as const;
+    const normalizedRows =
+      kind === 'following'
+        ? (
+            await this.prisma.userFollow.findMany({
+              where: {
+                followerId: ownerId,
+                followed: { ageRestrictedAt: null, status: 'ACTIVE' },
+                ...(blockedIds.length > 0
+                  ? { followedId: { notIn: blockedIds } }
+                  : {}),
+                ...(cursor
+                  ? {
+                      OR: [
+                        { createdAt: { lt: new Date(cursor.createdAt) } },
+                        {
+                          createdAt: new Date(cursor.createdAt),
+                          followedId: { lt: cursor.userId },
+                        },
+                      ],
+                    }
+                  : {}),
+              },
+              orderBy: [{ createdAt: 'desc' }, { followedId: 'desc' }],
+              take: pageSize + 1,
+              select: {
+                followedId: true,
+                createdAt: true,
+                followed: { select: personSelect },
+              },
+            })
+          ).map((row) => ({
+            id: row.followedId,
+            createdAt: row.createdAt,
+            person: row.followed,
+          }))
+        : (
+            await this.prisma.userFollow.findMany({
+              where: {
+                followedId: ownerId,
+                follower: { ageRestrictedAt: null, status: 'ACTIVE' },
+                ...(blockedIds.length > 0
+                  ? { followerId: { notIn: blockedIds } }
+                  : {}),
+                ...(cursor
+                  ? {
+                      OR: [
+                        { createdAt: { lt: new Date(cursor.createdAt) } },
+                        {
+                          createdAt: new Date(cursor.createdAt),
+                          followerId: { lt: cursor.userId },
+                        },
+                      ],
+                    }
+                  : {}),
+              },
+              orderBy: [{ createdAt: 'desc' }, { followerId: 'desc' }],
+              take: pageSize + 1,
+              select: {
+                followerId: true,
+                createdAt: true,
+                follower: { select: personSelect },
+              },
+            })
+          ).map((row) => ({
+            id: row.followerId,
+            createdAt: row.createdAt,
+            person: row.follower,
+          }));
+    const hasMore = normalizedRows.length > pageSize;
+    const pageRows = hasMore
+      ? normalizedRows.slice(0, pageSize)
+      : normalizedRows;
     const last = pageRows.at(-1);
+    const targetIds = pageRows.map((row) => row.id);
+    const ownerIsViewer = viewerId === ownerId;
+    const [outgoing, incoming] = viewerId
+      ? await Promise.all([
+          ownerIsViewer && kind === 'following'
+            ? Promise.resolve(targetIds.map((followedId) => ({ followedId })))
+            : this.prisma.userFollow.findMany({
+                where: {
+                  followerId: viewerId,
+                  followedId: { in: targetIds },
+                },
+                select: { followedId: true },
+              }),
+          ownerIsViewer && kind === 'followers'
+            ? Promise.resolve(targetIds.map((followerId) => ({ followerId })))
+            : this.prisma.userFollow.findMany({
+                where: {
+                  followerId: { in: targetIds },
+                  followedId: viewerId,
+                },
+                select: { followerId: true },
+              }),
+        ])
+      : [[], []];
+    const outgoingIds = new Set(outgoing.map((row) => row.followedId));
+    const incomingIds = new Set(incoming.map((row) => row.followerId));
     return {
-      items: pageRows.map((row) => ({
-        id: row.followedId,
-        nickname: row.followed.nickname,
-        littleBlueBookId: row.followed.littleBlueBookId,
-        bio: row.followed.bio,
-        avatar: publicAvatar(
-          row.followed.nickname,
-          row.followed.avatarObjectKey,
-          this.media,
-        ),
-      })),
+      items: pageRows.map((row) => {
+        const { id, person } = row;
+        const isSelf = viewerId === id;
+        const following = outgoingIds.has(id);
+        const followedBy = incomingIds.has(id);
+        return {
+          id,
+          nickname: person.nickname,
+          littleBlueBookId: person.littleBlueBookId,
+          bio: person.bio,
+          avatar: publicAvatar(
+            person.nickname,
+            person.avatarObjectKey,
+            this.media,
+          ),
+          viewer: {
+            authenticated: Boolean(viewer),
+            isSelf,
+            following,
+            followedBy,
+            mutual: following && followedBy,
+            canFollow: Boolean(viewer) && !isSelf,
+          },
+        };
+      }),
       nextCursor:
         hasMore && last
-          ? this.encodeFollowingCursor({
+          ? this.encodeRelationshipCursor({
               createdAt: last.createdAt.toISOString(),
-              followedId: last.followedId,
-              userId,
+              userId: last.id,
+              ownerId,
+              viewerId: viewerId ?? 'anonymous',
+              kind,
             })
           : null,
     };
@@ -622,10 +770,12 @@ export class ProfileService {
     return sessionUser.id;
   }
 
-  private encodeFollowingCursor(value: {
+  private encodeRelationshipCursor(value: {
     createdAt: string;
-    followedId: string;
     userId: string;
+    ownerId: string;
+    viewerId: string;
+    kind: 'following' | 'followers';
   }): string {
     const payload = Buffer.from(JSON.stringify(value), 'utf8').toString(
       'base64url',
@@ -639,10 +789,18 @@ export class ProfileService {
     return `${payload}.${signature}`;
   }
 
-  private decodeFollowingCursor(
+  private decodeRelationshipCursor(
     cursor: string | undefined,
-    userId: string,
-  ): { createdAt: string; followedId: string; userId: string } | null {
+    kind: 'following' | 'followers',
+    ownerId: string,
+    viewerId: string,
+  ): {
+    createdAt: string;
+    userId: string;
+    ownerId: string;
+    viewerId: string;
+    kind: 'following' | 'followers';
+  } | null {
     if (!cursor) return null;
     try {
       if (cursor.length > 768) throw new Error('too long');
@@ -663,30 +821,72 @@ export class ProfileService {
       }
       const parsed = JSON.parse(
         Buffer.from(payload, 'base64url').toString('utf8'),
-      ) as Partial<{ createdAt: string; followedId: string; userId: string }>;
+      ) as Partial<{
+        createdAt: string;
+        userId: string;
+        ownerId: string;
+        viewerId: string;
+        kind: 'following' | 'followers';
+      }>;
       if (
-        parsed.userId !== userId ||
+        parsed.ownerId !== ownerId ||
+        parsed.viewerId !== viewerId ||
+        parsed.kind !== kind ||
         typeof parsed.createdAt !== 'string' ||
         Number.isNaN(Date.parse(parsed.createdAt)) ||
-        typeof parsed.followedId !== 'string' ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-          parsed.followedId,
-        )
+        typeof parsed.userId !== 'string' ||
+        !UUID_PATTERN.test(parsed.userId)
       ) {
         throw new Error('invalid payload');
       }
       return parsed as {
         createdAt: string;
-        followedId: string;
         userId: string;
+        ownerId: string;
+        viewerId: string;
+        kind: 'following' | 'followers';
       };
     } catch {
       throw new ApiException(
         HttpStatus.BAD_REQUEST,
         'FOLLOWING_CURSOR_INVALID',
-        '关注列表分页游标无效',
+        '关系列表分页游标无效',
       );
     }
+  }
+
+  private async visibleRelationshipCount(
+    ownerId: string,
+    kind: 'following' | 'followers',
+    viewerId?: string,
+  ): Promise<number> {
+    const ownerBlockedIds = this.safety
+      ? await this.safety.blockedIds(ownerId)
+      : [];
+    const viewerBlockedIds =
+      viewerId && viewerId !== ownerId && this.safety
+        ? await this.safety.blockedIds(viewerId)
+        : [];
+    const blockedIds = [...new Set([...ownerBlockedIds, ...viewerBlockedIds])];
+    const relationField = kind === 'following' ? 'followed' : 'follower';
+    const idField = kind === 'following' ? 'followedId' : 'followerId';
+    return this.prisma.userFollow.count({
+      where: {
+        ...(kind === 'following'
+          ? { followerId: ownerId }
+          : { followedId: ownerId }),
+        [relationField]: { ageRestrictedAt: null, status: 'ACTIVE' },
+        ...(blockedIds.length > 0 ? { [idField]: { notIn: blockedIds } } : {}),
+      },
+    });
+  }
+
+  private userNotFound(): ApiException {
+    return new ApiException(
+      HttpStatus.NOT_FOUND,
+      'USER_NOT_FOUND',
+      '用户不存在',
+    );
   }
 
   private authenticationRequired(): ApiException {

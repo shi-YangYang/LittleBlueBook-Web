@@ -106,6 +106,7 @@ describe('ProfileService', () => {
       })),
     };
     const rows = Array.from({ length: 21 }, (_, index) => ({
+      followerId: '00000000-0000-4000-8000-000000000001',
       followedId: `00000000-0000-4000-8000-${String(index + 10).padStart(12, '0')}`,
       createdAt: new Date(
         `2026-08-04T10:${String(59 - index).padStart(2, '0')}:00.000Z`,
@@ -118,7 +119,18 @@ describe('ProfileService', () => {
       },
     }));
     const prisma = {
-      userFollow: { findMany: jest.fn(async () => rows) },
+      user: {
+        findFirst: jest.fn(async () => ({
+          id: '00000000-0000-4000-8000-000000000001',
+        })),
+      },
+      userFollow: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce(rows)
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([]),
+      },
     };
     const service = new ProfileService(
       auth as unknown as AuthService,
@@ -138,14 +150,22 @@ describe('ProfileService', () => {
       littleBlueBookId: '10000000',
       bio: '公开简介',
       avatar: { type: 'initial', value: '蓝' },
+      viewer: {
+        authenticated: true,
+        isSelf: false,
+        following: true,
+        followedBy: false,
+        mutual: false,
+        canFollow: true,
+      },
     });
     expect(page.nextCursor).toEqual(expect.any(String));
     expect(prisma.userFollow.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {
+        where: expect.objectContaining({
           followerId: '00000000-0000-4000-8000-000000000001',
-          followed: { ageRestrictedAt: null },
-        },
+          followed: { ageRestrictedAt: null, status: 'ACTIVE' },
+        }),
         orderBy: [{ createdAt: 'desc' }, { followedId: 'desc' }],
         take: 21,
       }),
@@ -156,6 +176,67 @@ describe('ProfileService', () => {
     ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'FOLLOWING_CURSOR_INVALID' }),
     });
-    expect(prisma.userFollow.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.userFollow.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('serves anonymous public followers with public fields and no write state', async () => {
+    const ownerId = '00000000-0000-4000-8000-000000000001';
+    const followerId = '00000000-0000-4000-8000-000000000009';
+    const auth = { currentUser: jest.fn(async () => null) };
+    const prisma = {
+      user: { findFirst: jest.fn(async () => ({ id: ownerId })) },
+      userFollow: {
+        findMany: jest.fn(async () => [
+          {
+            followerId,
+            createdAt: new Date('2026-08-13T10:00:00.000Z'),
+            follower: {
+              nickname: '公开蓝友',
+              littleBlueBookId: '0000000009',
+              bio: '只返回公开简介',
+              avatarObjectKey: null,
+            },
+          },
+        ]),
+      },
+    };
+    const service = new ProfileService(
+      auth as unknown as AuthService,
+      prisma as unknown as PrismaService,
+      {} as AvatarProcessorService,
+      { publicUrl: jest.fn() } as unknown as MediaStorage,
+      {
+        getOrThrow: jest.fn(() => 'unit-test-secret-at-least-32-characters'),
+      } as never,
+    );
+
+    const page = await service.relationships(
+      undefined,
+      ownerId,
+      'followers',
+      undefined,
+      20,
+    );
+    expect(page).toEqual({
+      items: [
+        {
+          id: followerId,
+          nickname: '公开蓝友',
+          littleBlueBookId: '0000000009',
+          bio: '只返回公开简介',
+          avatar: { type: 'initial', value: '公' },
+          viewer: {
+            authenticated: false,
+            isSelf: false,
+            following: false,
+            followedBy: false,
+            mutual: false,
+            canFollow: false,
+          },
+        },
+      ],
+      nextCursor: null,
+    });
+    expect(JSON.stringify(page)).not.toMatch(/email|status|ageRestricted/i);
   });
 });

@@ -167,40 +167,82 @@ export class InteractionsService {
       );
     }
     const target = await this.prisma.user.findFirst({
-      where: { id: followedId, status: 'ACTIVE' },
+      where: { id: followedId, status: 'ACTIVE', ageRestrictedAt: null },
       select: { id: true },
     });
     if (!target) throw this.userNotFound();
     await this.safety?.assertNotBlocked(user.id, followedId);
 
-    const followingCount = await this.prisma.$transaction(
-      async (transaction) => {
-        if (following) {
-          await this.assertTransactionNotBlocked(transaction, user.id, [
-            followedId,
-          ]);
-          const created = await transaction.userFollow.createMany({
-            data: [{ followerId: user.id, followedId }],
-            skipDuplicates: true,
-          });
-          if (created.count === 1) {
-            await transaction.notification.create({
-              data: {
-                type: 'USER_FOLLOWED',
-                recipientId: followedId,
-                actorId: user.id,
-              },
-            });
-          }
-        } else {
-          await transaction.userFollow.deleteMany({
-            where: { followerId: user.id, followedId },
+    const result = await this.prisma.$transaction(async (transaction) => {
+      if (following) {
+        await this.assertTransactionNotBlocked(transaction, user.id, [
+          followedId,
+        ]);
+        const created = await transaction.userFollow.createMany({
+          data: [{ followerId: user.id, followedId }],
+          skipDuplicates: true,
+        });
+        if (created.count === 1) {
+          await transaction.notification.create({
+            data: {
+              type: 'USER_FOLLOWED',
+              recipientId: followedId,
+              actorId: user.id,
+            },
           });
         }
-        return transaction.userFollow.count({ where: { followerId: user.id } });
-      },
-    );
-    return { following, followingCount };
+      } else {
+        await transaction.userFollow.deleteMany({
+          where: { followerId: user.id, followedId },
+        });
+      }
+      const [viewerBlockedIds, targetBlockedIds] = await Promise.all([
+        this.transactionBlockedIds(transaction, user.id),
+        this.transactionBlockedIds(transaction, followedId),
+      ]);
+      const blockedIds = [
+        ...new Set([...viewerBlockedIds, ...targetBlockedIds]),
+      ];
+      const [followingCount, followerCount, reverse] = await Promise.all([
+        transaction.userFollow.count({
+          where: {
+            followerId: user.id,
+            ...(viewerBlockedIds.length > 0
+              ? { followedId: { notIn: viewerBlockedIds } }
+              : {}),
+            followed: { status: 'ACTIVE', ageRestrictedAt: null },
+          },
+        }),
+        transaction.userFollow.count({
+          where: {
+            followedId,
+            ...(blockedIds.length > 0
+              ? { followerId: { notIn: blockedIds } }
+              : {}),
+            follower: { status: 'ACTIVE', ageRestrictedAt: null },
+          },
+        }),
+        transaction.userFollow.findUnique({
+          where: {
+            followerId_followedId: {
+              followerId: followedId,
+              followedId: user.id,
+            },
+          },
+          select: { followerId: true },
+        }),
+      ]);
+      return {
+        followingCount,
+        followerCount,
+        followedBy: Boolean(reverse),
+      };
+    });
+    return {
+      following,
+      ...result,
+      mutual: following && result.followedBy,
+    };
   }
 
   async comments(
@@ -848,7 +890,11 @@ export class InteractionsService {
       `,
     );
     const activeUsers = await transaction.user.count({
-      where: { id: { in: lockIds }, status: 'ACTIVE' },
+      where: {
+        id: { in: lockIds },
+        status: 'ACTIVE',
+        ageRestrictedAt: null,
+      },
     });
     if (activeUsers !== lockIds.length) throw this.userNotFound();
     const blocked = await transaction.userBlock.count({
@@ -860,6 +906,23 @@ export class InteractionsService {
       },
     });
     if (blocked > 0) throw this.userNotFound();
+  }
+
+  private async transactionBlockedIds(
+    transaction: Prisma.TransactionClient,
+    userId: string,
+  ): Promise<string[]> {
+    const rows = await transaction.userBlock.findMany({
+      where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
+      select: { blockerId: true, blockedId: true },
+    });
+    return [
+      ...new Set(
+        rows.map((row) =>
+          row.blockerId === userId ? row.blockedId : row.blockerId,
+        ),
+      ),
+    ];
   }
 
   private async assertTransactionNoteAvailable(

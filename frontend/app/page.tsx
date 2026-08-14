@@ -108,6 +108,8 @@ export default function Home() {
     null,
   );
   const [channelUrlReady, setChannelUrlReady] = useState(false);
+  const [followingFeed, setFollowingFeed] = useState(false);
+  const followingGatePromptedRef = useRef(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const loginButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -121,7 +123,10 @@ export default function Home() {
 
   useEffect(() => {
     const syncFromUrl = () => {
-      const code = new URLSearchParams(window.location.search).get('channel');
+      const parameters = new URLSearchParams(window.location.search);
+      const following = parameters.get('feed') === 'following';
+      const code = following ? null : parameters.get('channel');
+      setFollowingFeed(following);
       setActiveChannelCode(code);
       setChannelUrlReady(true);
     };
@@ -150,6 +155,21 @@ export default function Home() {
       active = false;
     };
   }, [channelsReloadVersion]);
+
+  useEffect(() => {
+    if (!followingFeed) {
+      followingGatePromptedRef.current = false;
+      return;
+    }
+    if (user) {
+      followingGatePromptedRef.current = false;
+      return;
+    }
+    if (sessionResolved && !followingGatePromptedRef.current) {
+      followingGatePromptedRef.current = true;
+      setModalOpen(true);
+    }
+  }, [followingFeed, sessionResolved, user]);
 
   useEffect(() => {
     const sessionRequestVersion = authStateVersionRef.current;
@@ -286,7 +306,15 @@ export default function Home() {
   const selectChannel = (code: string | null) => {
     const destination = code ? `/?channel=${encodeURIComponent(code)}` : '/';
     window.history.pushState(null, '', destination);
+    setFollowingFeed(false);
     setActiveChannelCode(code);
+  };
+
+  const selectFollowing = () => {
+    window.history.pushState(null, '', '/?feed=following');
+    setFollowingFeed(true);
+    setActiveChannelCode(null);
+    if (sessionResolved && !user) openModal();
   };
 
   useEffect(() => {
@@ -604,8 +632,20 @@ export default function Home() {
         <nav className="channel-nav" aria-label="内容频道">
           <button
             type="button"
-            className={activeChannelCode === null ? 'selected' : ''}
-            aria-current={activeChannelCode === null ? 'page' : undefined}
+            className={followingFeed ? 'selected' : ''}
+            aria-current={followingFeed ? 'page' : undefined}
+            onClick={selectFollowing}
+          >
+            关注
+          </button>
+          <button
+            type="button"
+            className={
+              !followingFeed && activeChannelCode === null ? 'selected' : ''
+            }
+            aria-current={
+              !followingFeed && activeChannelCode === null ? 'page' : undefined
+            }
             onClick={() => selectChannel(null)}
           >
             推荐
@@ -630,7 +670,37 @@ export default function Home() {
           ) : null}
         </nav>
 
-        {!channelUrlReady || channelsLoading ? (
+        {followingFeed && !sessionResolved ? (
+          <section className="feed-state" aria-busy="true">
+            <span>正在确认登录状态…</span>
+          </section>
+        ) : followingFeed && !user ? (
+          <section className="note-feed feed-state" aria-label="关注内容">
+            <Icon name="empty" size={48} />
+            <p>登录后查看关注的人发布的内容</p>
+          </section>
+        ) : followingFeed ? (
+          <NoteFeed
+            key={`following:${user?.id ?? 'anonymous'}`}
+            endpoint="/notes/following"
+            label="关注内容"
+            emptyMessage="关注的人还没有发布笔记"
+            emptyMessages={{
+              NO_FOLLOWS: '关注感兴趣的用户，发现他们的最新内容',
+              NO_NOTES: '关注的人还没有发布笔记',
+            }}
+            errorMessage="关注内容加载失败，请稍后重试"
+            emptyActionLabel="搜索用户"
+            emptyActionReason="NO_FOLLOWS"
+            onEmptyAction={() => window.location.assign('/search?type=user')}
+            onUnauthorized={openModal}
+            onAuthenticationRequired={(resume) => {
+              interactionAfterAuthRef.current = resume;
+              openModal();
+            }}
+            onInteractionMessage={setToast}
+          />
+        ) : !channelUrlReady || channelsLoading ? (
           <section className="feed-state" aria-busy="true">
             <span>正在加载频道…</span>
           </section>

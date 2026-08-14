@@ -108,6 +108,26 @@ export class ProfileSettingsUpdateResponseDto {
   data!: ProfileSettingsUpdateDto;
 }
 
+class FollowingViewerDto {
+  @ApiProperty({ type: Boolean })
+  authenticated!: boolean;
+
+  @ApiProperty({ type: Boolean })
+  isSelf!: boolean;
+
+  @ApiProperty({ type: Boolean })
+  following!: boolean;
+
+  @ApiProperty({ type: Boolean })
+  followedBy!: boolean;
+
+  @ApiProperty({ type: Boolean })
+  mutual!: boolean;
+
+  @ApiProperty({ type: Boolean })
+  canFollow!: boolean;
+}
+
 class FollowingUserDto {
   @ApiProperty({ type: String, format: 'uuid' })
   id!: string;
@@ -123,6 +143,9 @@ class FollowingUserDto {
 
   @ApiProperty({ type: () => ProfileAvatarDto })
   avatar!: ProfileAvatarDto;
+
+  @ApiProperty({ type: () => FollowingViewerDto })
+  viewer!: FollowingViewerDto;
 }
 
 class FollowingPageDto {

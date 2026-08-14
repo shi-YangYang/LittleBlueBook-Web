@@ -50,6 +50,15 @@ export class FollowResultDto {
     description: 'The authoritative current-user following count',
   })
   followingCount!: number;
+
+  @ApiProperty({ type: Number, minimum: 0 })
+  followerCount!: number;
+
+  @ApiProperty({ type: Boolean })
+  followedBy!: boolean;
+
+  @ApiProperty({ type: Boolean })
+  mutual!: boolean;
 }
 
 export class FollowResponseDto {

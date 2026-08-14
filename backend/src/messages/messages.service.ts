@@ -607,18 +607,20 @@ export class MessagesService {
     const [sender, target] = await Promise.all([
       transaction.user.findUnique({
         where: { id: firstUserId },
-        select: { id: true, status: true },
+        select: { id: true, status: true, ageRestrictedAt: true },
       }),
       transaction.user.findUnique({
         where: { id: secondUserId },
-        select: { id: true, status: true },
+        select: { id: true, status: true, ageRestrictedAt: true },
       }),
     ]);
     if (
       !sender ||
       sender.status === 'SUSPENDED' ||
+      sender.ageRestrictedAt ||
       !target ||
-      target.status === 'SUSPENDED'
+      target.status === 'SUSPENDED' ||
+      target.ageRestrictedAt
     )
       throw this.userNotFound();
     const blocked = await transaction.userBlock?.count({
@@ -657,9 +659,10 @@ export class MessagesService {
     if (await this.safety?.isBlocked(firstUserId, secondUserId)) return false;
     const target = await this.prisma.user.findUnique({
       where: { id: secondUserId },
-      select: { status: true },
+      select: { status: true, ageRestrictedAt: true },
     });
-    if (!target || target.status === 'SUSPENDED') return false;
+    if (!target || target.status === 'SUSPENDED' || target.ageRestrictedAt)
+      return false;
     const count = await this.prisma.userFollow.count({
       where: {
         OR: [
@@ -709,7 +712,11 @@ export class MessagesService {
         select: { blockerId: true, blockedId: true },
       }),
       this.prisma.user.findMany({
-        where: { id: { in: [...mutual] }, status: 'ACTIVE' },
+        where: {
+          id: { in: [...mutual] },
+          status: 'ACTIVE',
+          ageRestrictedAt: null,
+        },
         select: { id: true },
       }),
     ]);

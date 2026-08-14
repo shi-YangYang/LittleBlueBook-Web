@@ -74,6 +74,14 @@ class NotePageDto {
 
   @ApiProperty({ type: String, nullable: true })
   nextCursor!: string | null;
+
+  @ApiProperty({
+    type: String,
+    enum: ['NO_FOLLOWS', 'NO_NOTES'],
+    required: false,
+    description: 'Following-feed initial empty-state reason',
+  })
+  emptyReason?: 'NO_FOLLOWS' | 'NO_NOTES';
 }
 
 export class NotePageResponseDto {

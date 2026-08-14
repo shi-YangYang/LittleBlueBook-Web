@@ -41,15 +41,25 @@ export type ProfileSettingsUpdateResult = {
   };
 };
 
-export type FollowingUser = {
+export type RelationshipUser = {
   id: string;
   nickname: string;
   littleBlueBookId: string;
   bio: string | null;
   avatar: ProfileAvatar;
+  viewer: {
+    authenticated: boolean;
+    isSelf: boolean;
+    following: boolean;
+    followedBy: boolean;
+    mutual: boolean;
+    canFollow: boolean;
+  };
 };
 
-export type FollowingPage = {
-  items: FollowingUser[];
+export type RelationshipPage = {
+  items: RelationshipUser[];
   nextCursor: string | null;
 };
+
+export type FollowingPage = RelationshipPage;

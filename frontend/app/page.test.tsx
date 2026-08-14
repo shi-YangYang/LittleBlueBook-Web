@@ -101,13 +101,77 @@ describe('Home', () => {
     expect(
       screen.getByRole('navigation', { name: '内容频道' }),
     ).toHaveTextContent(
-      '推荐数码汽车游戏运动健身户外穿搭美食职场情感家居旅行其它',
+      '关注推荐数码汽车游戏运动健身户外穿搭美食职场情感家居旅行其它',
     );
     expect(screen.getAllByRole('button', { name: '登录' })).toHaveLength(1);
     expect(document.querySelectorAll('.note-card')).toHaveLength(0);
     expect(
       screen.getByRole('button', { name: '发布笔记' }),
     ).toBeInTheDocument();
+  });
+
+  it('gates the following URL before any private feed request', async () => {
+    window.history.replaceState(null, '', '/?feed=following');
+    const requestedUrls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        requestedUrls.push(url);
+        if (url.endsWith('/channels')) return channelList();
+        if (url.endsWith('/auth/session')) return guestSession();
+        if (url.includes('/notes/recommendations')) return emptyNotes();
+        throw new Error(`Unexpected private request: ${url}`);
+      }) as unknown as typeof fetch,
+    );
+
+    render(<Home />);
+    expect(
+      await screen.findByRole('dialog', { name: '邮箱登录' }),
+    ).toBeVisible();
+    expect(window.location.search).toBe('?feed=following');
+    expect(requestedUrls.some((url) => url.includes('/notes/following'))).toBe(
+      false,
+    );
+  });
+
+  it('loads authenticated following data and renders its distinct empty states', async () => {
+    let emptyReason: 'NO_FOLLOWS' | 'NO_NOTES' = 'NO_FOLLOWS';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/channels')) return channelList();
+        if (url.endsWith('/auth/session')) {
+          return response({
+            authenticated: true,
+            pendingRegistration: false,
+            user: {
+              id: '00000000-0000-4000-8000-000000000001',
+              nickname: '蓝友',
+              avatar: { type: 'initial', value: '蓝' },
+            },
+          });
+        }
+        if (url.includes('/notes/following')) {
+          return response({ items: [], nextCursor: null, emptyReason });
+        }
+        return emptyNotes();
+      }) as unknown as typeof fetch,
+    );
+    render(<Home />);
+    await screen.findByText('还没有笔记，发布第一篇内容吧');
+    fireEvent.click(screen.getByRole('button', { name: '关注' }));
+    expect(
+      await screen.findByText('关注感兴趣的用户，发现他们的最新内容'),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: '搜索用户' })).toBeVisible();
+
+    emptyReason = 'NO_NOTES';
+    fireEvent.click(screen.getByRole('button', { name: '推荐' }));
+    fireEvent.click(screen.getByRole('button', { name: '关注' }));
+    expect(await screen.findByText('关注的人还没有发布笔记')).toBeVisible();
+    expect(screen.queryByRole('button', { name: '搜索用户' })).toBeNull();
   });
 
   it('opens the shared search dialog and keeps unrelated placeholders unchanged', async () => {

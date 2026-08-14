@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -184,6 +184,38 @@ export class NotesService {
       limit,
       viewer?.id,
     );
+  }
+
+  async following(
+    sessionId: string | undefined,
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<NotePage> {
+    const viewer = await this.requireUser(sessionId);
+    const result = await this.list(
+      { followingViewerId: viewer.id, scope: `following:${viewer.id}` },
+      cursor,
+      limit,
+      viewer.id,
+    );
+    if (cursor || result.items.length > 0) {
+      return result;
+    }
+
+    const blockedIds = this.safety
+      ? await this.safety.blockedIds(viewer.id)
+      : [];
+    const visibleFollowCount = await this.prisma.userFollow.count({
+      where: {
+        followerId: viewer.id,
+        followedId: { notIn: blockedIds },
+        followed: { status: 'ACTIVE', ageRestrictedAt: null },
+      },
+    });
+    return {
+      ...result,
+      emptyReason: visibleFollowCount === 0 ? 'NO_FOLLOWS' : 'NO_NOTES',
+    };
   }
 
   async channel(
@@ -806,6 +838,7 @@ export class NotesService {
       authorId?: string;
       channelId?: string;
       contentType?: 'IMAGE' | 'VIDEO';
+      followingViewerId?: string;
       scope: string;
     },
     cursorInput: string | undefined,
@@ -847,6 +880,18 @@ export class NotesService {
         ...(filter.authorId ? { authorId: filter.authorId } : {}),
         ...(filter.channelId ? { channelId: filter.channelId } : {}),
         ...(filter.contentType ? { contentType: filter.contentType } : {}),
+        ...(filter.followingViewerId
+          ? {
+              author: {
+                ageRestrictedAt: null,
+                status: 'ACTIVE' as const,
+                id: { notIn: blockedIds },
+                followers: {
+                  some: { followerId: filter.followingViewerId },
+                },
+              },
+            }
+          : {}),
         ...cursorWhere,
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -1279,7 +1324,13 @@ export class NotesService {
   }
 
   private encodeCursor(cursor: CursorValue): string {
-    return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+    const payload = Buffer.from(JSON.stringify(cursor), 'utf8').toString(
+      'base64url',
+    );
+    if (!cursor.scope.startsWith('following:')) {
+      return payload;
+    }
+    return `${payload}.${this.cursorSignature(payload)}`;
   }
 
   private decodeCursor(
@@ -1293,8 +1344,20 @@ export class NotesService {
       if (cursor.length > 512) {
         throw new Error('too long');
       }
+      const followingScope = expectedScope.startsWith('following:');
+      const [payload, signature, extra] = cursor.split('.');
+      if (
+        !payload ||
+        extra !== undefined ||
+        (followingScope &&
+          (!signature ||
+            !this.signaturesMatch(signature, this.cursorSignature(payload)))) ||
+        (!followingScope && signature !== undefined)
+      ) {
+        throw new Error('invalid signature');
+      }
       const parsed = JSON.parse(
-        Buffer.from(cursor, 'base64url').toString('utf8'),
+        Buffer.from(payload, 'base64url').toString('utf8'),
       ) as Partial<CursorValue>;
       if (
         typeof parsed.createdAt !== 'string' ||
@@ -1317,6 +1380,24 @@ export class NotesService {
         '分页游标无效',
       );
     }
+  }
+
+  private cursorSignature(payload: string): string {
+    return createHmac(
+      'sha256',
+      this.config.getOrThrow<string>('AUTH_CODE_HASH_SECRET'),
+    )
+      .update(payload)
+      .digest('base64url');
+  }
+
+  private signaturesMatch(left: string, right: string): boolean {
+    const leftBuffer = Buffer.from(left);
+    const rightBuffer = Buffer.from(right);
+    return (
+      leftBuffer.length === rightBuffer.length &&
+      timingSafeEqual(leftBuffer, rightBuffer)
+    );
   }
 
   private isIdempotencyConflict(error: unknown): boolean {

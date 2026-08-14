@@ -44,6 +44,10 @@ function dependencies() {
     })),
   };
   const prisma = {
+    userFollow: {
+      findMany: jest.fn(async () => []),
+      count: jest.fn(async () => 0),
+    },
     note: {
       findUnique: jest.fn(async () => null),
       findFirst: jest.fn(async () => null),
@@ -594,6 +598,114 @@ describe('NotesService', () => {
     ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'NOTE_NOT_FOUND' }),
     });
+  });
+
+  it('scopes the authenticated following feed to followed active authors', async () => {
+    const { service, prisma } = dependencies();
+
+    const result = await service.following('session-secret', undefined, 20);
+
+    expect(prisma.note.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          moderationStatus: 'VISIBLE',
+          author: expect.objectContaining({
+            ageRestrictedAt: null,
+            status: 'ACTIVE',
+            followers: { some: { followerId: user.id } },
+          }),
+        }),
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 21,
+      }),
+    );
+    expect(result).toEqual({
+      items: [],
+      nextCursor: null,
+      emptyReason: 'NO_FOLLOWS',
+    });
+  });
+
+  it('distinguishes followed users without notes and signs user-scoped cursors', async () => {
+    const { service, auth, prisma } = dependencies();
+    (prisma.userFollow.count as jest.Mock).mockResolvedValueOnce(1);
+    await expect(
+      service.following('session-secret', undefined, 20),
+    ).resolves.toEqual({
+      items: [],
+      nextCursor: null,
+      emptyReason: 'NO_NOTES',
+    });
+
+    (prisma.note.findMany as jest.Mock).mockResolvedValueOnce(
+      Array.from({ length: 21 }, (_, index) => ({
+        id: `00000000-0000-4000-8000-${String(index + 100).padStart(12, '0')}`,
+        contentType: 'IMAGE',
+        title: `关注笔记${index}`,
+        createdAt: new Date(
+          `2026-08-${String(13 - Math.floor(index / 2)).padStart(2, '0')}T12:${String(59 - index).padStart(2, '0')}:00.000Z`,
+        ),
+        viewCount: 0,
+        contentVersion: 1,
+        moderationStatus: 'VISIBLE',
+        author: {
+          id: '00000000-0000-4000-8000-000000000099',
+          nickname: '关注作者',
+          avatarObjectKey: null,
+        },
+        images: [
+          {
+            objectKey: `${String(index).padStart(48, 'c')}.png`,
+            width: 100,
+            height: 120,
+          },
+        ],
+        video: null,
+        likes: [],
+        _count: { likes: 0 },
+      })),
+    );
+    const firstUserPage = await service.following(
+      'session-secret',
+      undefined,
+      20,
+    );
+    expect(firstUserPage.nextCursor).toMatch(/\./);
+
+    (auth.currentUser as jest.Mock).mockResolvedValueOnce({
+      ...user,
+      id: '00000000-0000-4000-8000-000000000088',
+    });
+    await expect(
+      service.following(
+        'another-session',
+        firstUserPage.nextCursor ?? undefined,
+        20,
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'CURSOR_INVALID' }),
+    });
+    await expect(
+      service.following(
+        'session-secret',
+        `${firstUserPage.nextCursor}tampered`,
+        20,
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'CURSOR_INVALID' }),
+    });
+  });
+
+  it('rejects anonymous following feed access before querying notes', async () => {
+    const { service, auth, prisma } = dependencies();
+    (auth.currentUser as jest.Mock).mockResolvedValueOnce(null);
+
+    await expect(
+      service.following(undefined, undefined, 20),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'AUTHENTICATION_REQUIRED' }),
+    });
+    expect(prisma.note.findMany).not.toHaveBeenCalled();
   });
 
   it('validates the channel before rate limiting or storing media', async () => {

@@ -11,6 +11,7 @@
   - `specs/spec-011-engagement-and-messaging/spec.md`
   - `specs/spec-013-video-publishing-and-playback/spec.md`
   - `specs/spec-014-note-management-and-following/spec.md`
+  - `.ai/decisions/0016-public-social-graph-and-following-feed.md`
 
 ## 背景
 
@@ -63,3 +64,7 @@
 - 编辑历史、版本对比或公开修改记录；
 - 粉丝列表、公开关注名单、关系分组或批量取消关注；
 - 内容审核、举报、封禁、管理员代删或法律保留流程。
+
+## 后续变更
+
+- 2026-08-13：决策 `0016-public-social-graph-and-following-feed.md` 已明确开放自己与他人的公开关注/粉丝列表，并增加关注信息流。因此本记录中“他人公开主页不公开关注名单”的隐私边界已被决策 0016 替代；笔记编辑、删除、视频不可替换和媒体生命周期等其余决定继续有效。

@@ -250,6 +250,25 @@ export class NotesController {
     };
   }
 
+  @Get('following')
+  @ApiOperation({
+    summary: 'List authenticated followed-user notes newest first',
+  })
+  @ApiOkResponse({ type: NotePageResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  async following(
+    @Req() request: Request,
+    @Query() query: ListNotesDto,
+  ): Promise<{ data: NotePage }> {
+    return {
+      data: await this.notes.following(
+        readCookie(request, SESSION_COOKIE_NAME),
+        query.cursor,
+        query.limit,
+      ),
+    };
+  }
+
   @Get('videos')
   @ApiOperation({ summary: 'List public video notes newest first' })
   @ApiOkResponse({

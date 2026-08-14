@@ -211,6 +211,8 @@ describe('SearchService', () => {
         authenticated: true,
         isSelf: false,
         following: true,
+        followedBy: false,
+        mutual: false,
         canFollow: true,
         canMessage: false,
       },

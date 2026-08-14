@@ -329,6 +329,7 @@ model UserFollow {
   @@id([followerId, followedId])
   @@index([followedId])
   @@index([followerId, createdAt(sort: Desc), followedId(sort: Desc)])
+  @@index([followedId, createdAt(sort: Desc), followerId(sort: Desc)])
   @@map("user_follows")
 }
 

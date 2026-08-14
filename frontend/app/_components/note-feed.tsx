@@ -27,6 +27,12 @@ type NoteFeedProps = {
   onAuthenticationRequired?: (resume: () => Promise<void>) => void;
   onInteractionMessage?: (message: string) => void;
   removeWhenUnliked?: boolean;
+  emptyActionLabel?: string;
+  emptyActionReason?: NotePageData['emptyReason'];
+  onEmptyAction?: () => void;
+  emptyMessages?: Partial<
+    Record<NonNullable<NotePageData['emptyReason']>, string>
+  >;
 };
 
 const INITIAL_LOADING_MINIMUM_MS = 300;
@@ -41,9 +47,14 @@ export function NoteFeed({
   onAuthenticationRequired,
   onInteractionMessage,
   removeWhenUnliked = false,
+  emptyActionLabel,
+  emptyActionReason,
+  onEmptyAction,
+  emptyMessages,
 }: NoteFeedProps) {
   const [items, setItems] = useState<NoteCardData[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [emptyReason, setEmptyReason] = useState<NotePageData['emptyReason']>();
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [initialError, setInitialError] = useState(false);
@@ -90,11 +101,13 @@ export function NoteFeed({
       setMoreError(false);
       setItems([]);
       setCursor(null);
+      setEmptyReason(undefined);
       try {
         const page = await readPage(undefined, controller.signal);
         if (!active || !page) return;
         setItems(page.items);
         setCursor(page.nextCursor);
+        setEmptyReason(page.emptyReason);
       } catch (error) {
         if (
           active &&
@@ -208,10 +221,17 @@ export function NoteFeed({
         <div className="feed-grid" data-testid="feed-grid" aria-hidden="true" />
         <div className="feed-state feed-empty-state">
           <Icon name="empty" size={48} />
-          <p>{emptyMessage}</p>
+          <p>{(emptyReason && emptyMessages?.[emptyReason]) || emptyMessage}</p>
           {onPublish ? (
             <button type="button" onClick={onPublish}>
               发布笔记
+            </button>
+          ) : null}
+          {emptyActionLabel &&
+          onEmptyAction &&
+          (!emptyActionReason || emptyActionReason === emptyReason) ? (
+            <button type="button" onClick={onEmptyAction}>
+              {emptyActionLabel}
             </button>
           ) : null}
         </div>

@@ -40,6 +40,8 @@ export type PublicUserProfileData = {
     authenticated: boolean;
     isSelf: boolean;
     following: boolean;
+    followedBy: boolean;
+    mutual: boolean;
     canFollow: boolean;
     canMessage: boolean;
   };

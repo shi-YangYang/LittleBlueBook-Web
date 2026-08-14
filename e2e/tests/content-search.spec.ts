@@ -457,7 +457,7 @@ test('opens the modal, restores URL tabs and completes public-profile follow', a
   await expect(publishedNotes).toHaveCount(2);
   await expect(publishedNotes.first()).toBeVisible();
 
-  await page.getByRole('button', { name: '关注' }).click();
+  await page.getByRole('button', { name: '关注', exact: true }).click();
   const auth = page.getByRole('dialog', { name: '邮箱登录' });
   await auth.getByLabel('邮箱').fill('search-viewer@example.com');
   await auth.getByLabel('同意用户协议与隐私政策').check();

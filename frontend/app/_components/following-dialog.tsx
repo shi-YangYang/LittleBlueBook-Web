@@ -7,24 +7,37 @@ import { apiRequest, ApiRequestError } from '../_lib/api';
 import { lockDocumentScroll } from '../_lib/document-scroll-lock';
 import { Avatar, type ProfileAvatar } from './avatar';
 
-type FollowingUser = {
+export type RelationshipKind = 'following' | 'followers';
+
+type RelationshipUser = {
   id: string;
   nickname: string;
   littleBlueBookId: string;
   bio: string | null;
   avatar: ProfileAvatar;
+  viewer?: {
+    authenticated: boolean;
+    isSelf: boolean;
+    following: boolean;
+    followedBy: boolean;
+    mutual: boolean;
+    canFollow: boolean;
+  };
 };
 
-type FollowingPage = {
-  items: FollowingUser[];
+type RelationshipPage = {
+  items: RelationshipUser[];
   nextCursor: string | null;
 };
 
 type FollowingDialogProps = {
   open: boolean;
   onClose: () => void;
-  onFollowingCountChange: (count: number) => void;
+  onFollowingCountChange?: (count: number) => void;
   onAuthenticationRequired?: () => void;
+  ownerId?: string;
+  kind?: RelationshipKind;
+  title?: string;
 };
 
 export function FollowingDialog({
@@ -32,38 +45,48 @@ export function FollowingDialog({
   onClose,
   onFollowingCountChange,
   onAuthenticationRequired,
+  ownerId,
+  kind = 'following',
+  title,
 }: FollowingDialogProps) {
   const router = useRouter();
-  const [items, setItems] = useState<FollowingUser[]>([]);
+  const [items, setItems] = useState<RelationshipUser[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
-  const [confirmTarget, setConfirmTarget] = useState<FollowingUser | null>(
+  const [confirmTarget, setConfirmTarget] = useState<RelationshipUser | null>(
     null,
   );
-  const [unfollowing, setUnfollowing] = useState(false);
-  const [unfollowError, setUnfollowError] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLButtonElement>(null);
   const confirmationRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
-  const unfollowTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const relationTriggerRef = useRef<HTMLButtonElement | null>(null);
   const loadingMoreRef = useRef(false);
-  const onAuthenticationRequiredRef = useRef(onAuthenticationRequired);
 
-  useEffect(() => {
-    onAuthenticationRequiredRef.current = onAuthenticationRequired;
-  }, [onAuthenticationRequired]);
+  const endpoint = ownerId
+    ? `/users/${encodeURIComponent(ownerId)}/${kind}`
+    : `/profile/me/${kind}`;
 
-  const load = useCallback(async (cursor?: string, signal?: AbortSignal) => {
-    try {
-      const page = await apiRequest<FollowingPage>(
-        `/profile/me/following${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
-        { signal },
-      );
+  const load = useCallback(
+    async (cursor?: string, signal?: AbortSignal) => {
+      if (!endpoint) throw new Error('RELATIONSHIP_ENDPOINT_MISSING');
+      const query = new URLSearchParams({ limit: '20' });
+      if (cursor) query.set('cursor', cursor);
+      const queryString = query.toString();
+      const requestUrl = ownerId
+        ? `${endpoint}?${queryString}`
+        : cursor
+          ? `${endpoint}?cursor=${encodeURIComponent(cursor)}`
+          : endpoint;
+      const page = await apiRequest<RelationshipPage>(requestUrl, {
+        signal,
+      });
       setItems((current) => {
         const merged = cursor ? [...current, ...page.items] : page.items;
         return merged.filter(
@@ -72,13 +95,9 @@ export function FollowingDialog({
         );
       });
       setNextCursor(page.nextCursor);
-    } catch (loadError) {
-      if (loadError instanceof ApiRequestError && loadError.status === 401) {
-        onAuthenticationRequiredRef.current?.();
-      }
-      throw loadError;
-    }
-  }, []);
+    },
+    [endpoint, ownerId],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -96,7 +115,7 @@ export function FollowingDialog({
             active &&
             !(loadError instanceof Error && loadError.name === 'AbortError')
           ) {
-            setError('关注列表加载失败，请稍后重试');
+            setError('关系列表加载失败，请稍后重试');
           }
         })
         .finally(() => {
@@ -121,21 +140,21 @@ export function FollowingDialog({
     const handleKeys = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        if (confirmTarget && !unfollowing) {
+        if (confirmTarget && !busyId) {
           setConfirmTarget(null);
-          setUnfollowError('');
-          window.setTimeout(() => unfollowTriggerRef.current?.focus(), 0);
+          setMutationError('');
+          window.setTimeout(() => relationTriggerRef.current?.focus(), 0);
         } else if (!confirmTarget) {
           onClose();
         }
         return;
       }
-      const focusContainer = confirmTarget
+      const container = confirmTarget
         ? confirmationRef.current
         : dialogRef.current;
-      if (event.key !== 'Tab' || !focusContainer) return;
+      if (event.key !== 'Tab' || !container) return;
       const controls = Array.from(
-        focusContainer.querySelectorAll<HTMLElement>(
+        container.querySelectorAll<HTMLElement>(
           'button:not([disabled]), a[href]',
         ),
       );
@@ -151,11 +170,11 @@ export function FollowingDialog({
     };
     document.addEventListener('keydown', handleKeys);
     return () => document.removeEventListener('keydown', handleKeys);
-  }, [confirmTarget, onClose, open, unfollowing]);
+  }, [busyId, confirmTarget, onClose, open]);
 
   useEffect(() => {
-    if (!confirmTarget) return;
-    window.setTimeout(() => confirmButtonRef.current?.focus(), 0);
+    if (confirmTarget)
+      window.setTimeout(() => confirmButtonRef.current?.focus(), 0);
   }, [confirmTarget]);
 
   const loadMore = useCallback(async () => {
@@ -165,10 +184,8 @@ export function FollowingDialog({
     setError('');
     try {
       await load(nextCursor);
-    } catch (loadError) {
-      if (!(loadError instanceof Error && loadError.name === 'AbortError')) {
-        setError('更多关注加载失败，请重试');
-      }
+    } catch {
+      setError('更多关系加载失败，请重试');
     } finally {
       loadingMoreRef.current = false;
       setLoadingMore(false);
@@ -184,14 +201,11 @@ export function FollowingDialog({
       !root ||
       !nextCursor ||
       typeof IntersectionObserver === 'undefined'
-    ) {
+    )
       return;
-    }
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          void loadMore();
-        }
+        if (entries.some((entry) => entry.isIntersecting)) void loadMore();
       },
       { root, rootMargin: '160px 0px' },
     );
@@ -199,46 +213,81 @@ export function FollowingDialog({
     return () => observer.disconnect();
   }, [loadMore, nextCursor, open]);
 
-  if (!open) return null;
-
-  const unfollow = async () => {
-    if (!confirmTarget || unfollowing) return;
-    setUnfollowing(true);
-    setUnfollowError('');
+  const setFollow = async (target: RelationshipUser, following: boolean) => {
+    if (busyId) return;
+    setBusyId(target.id);
+    setMutationError('');
     try {
       const result = await apiRequest<{
-        following: false;
+        following: boolean;
         followingCount: number;
-      }>(`/users/${encodeURIComponent(confirmTarget.id)}/follow`, {
-        method: 'DELETE',
+        followerCount: number;
+        followedBy: boolean;
+        mutual: boolean;
+      }>(`/users/${encodeURIComponent(target.id)}/follow`, {
+        method: following ? 'PUT' : 'DELETE',
       });
-      setItems((current) =>
-        current.filter((item) => item.id !== confirmTarget.id),
-      );
-      onFollowingCountChange(result.followingCount);
+      setItems((current) => {
+        if (!ownerId && kind === 'following' && !result.following) {
+          return current.filter((item) => item.id !== target.id);
+        }
+        return current.map((item) => {
+          if (item.id !== target.id) return item;
+          const viewer = item.viewer ?? {
+            authenticated: true,
+            isSelf: false,
+            following: kind === 'following',
+            followedBy: false,
+            mutual: false,
+            canFollow: true,
+          };
+          return {
+            ...item,
+            viewer: {
+              ...viewer,
+              following: result.following,
+              followedBy: result.followedBy,
+              mutual: result.mutual,
+            },
+          };
+        });
+      });
+      onFollowingCountChange?.(result.followingCount);
       setConfirmTarget(null);
-      window.setTimeout(() => closeButtonRef.current?.focus(), 0);
-    } catch (unfollowRequestError) {
+      window.setTimeout(() => relationTriggerRef.current?.focus(), 0);
+    } catch (requestError) {
       if (
-        unfollowRequestError instanceof ApiRequestError &&
-        unfollowRequestError.status === 401
+        requestError instanceof ApiRequestError &&
+        requestError.status === 401
       ) {
-        onAuthenticationRequiredRef.current?.();
-        setUnfollowError('登录状态已失效，请重新登录后重试');
+        setMutationError('登录状态已失效，请重新登录后重试');
+        setConfirmTarget(null);
+        onAuthenticationRequired?.();
+      } else if (
+        requestError instanceof ApiRequestError &&
+        requestError.status === 404
+      ) {
+        setItems((current) => current.filter((item) => item.id !== target.id));
+        setConfirmTarget(null);
+        setMutationError('该用户已不可访问');
       } else {
-        setUnfollowError('取消关注失败，请稍后重试');
+        setMutationError('关注操作失败，请稍后重试');
       }
     } finally {
-      setUnfollowing(false);
+      setBusyId(null);
     }
   };
+
+  if (!open) return null;
+  const dialogTitle = title ?? (kind === 'following' ? '我的关注' : '我的粉丝');
+  const closeLabel = kind === 'following' ? '关闭关注列表' : '关闭粉丝列表';
 
   return (
     <div className="following-dialog-layer">
       <button
         className="modal-backdrop"
         type="button"
-        aria-label="关闭关注列表"
+        aria-label={closeLabel}
         onClick={onClose}
       />
       <div
@@ -249,13 +298,12 @@ export function FollowingDialog({
         aria-labelledby="following-dialog-title"
       >
         <header>
-          <h2 id="following-dialog-title">我的关注</h2>
+          <h2 id="following-dialog-title">{dialogTitle}</h2>
           <button ref={closeButtonRef} type="button" onClick={onClose}>
             <span aria-hidden="true">×</span>
-            <span className="sr-only">关闭关注列表</span>
+            <span className="sr-only">{closeLabel}</span>
           </button>
         </header>
-
         <div
           ref={listRef}
           className="following-list"
@@ -267,7 +315,9 @@ export function FollowingDialog({
               className="following-skeleton"
               data-testid="following-skeleton"
               role="status"
-              aria-label="正在加载关注列表"
+              aria-label={
+                kind === 'following' ? '正在加载关注列表' : '正在加载粉丝列表'
+              }
             >
               {Array.from({ length: 4 }, (_, index) => (
                 <div className="following-skeleton-row" key={index}>
@@ -280,7 +330,6 @@ export function FollowingDialog({
                   <span className="following-skeleton-action" />
                 </div>
               ))}
-              <span className="sr-only">正在加载关注列表…</span>
             </div>
           ) : null}
           {!loading && error && items.length === 0 ? (
@@ -292,7 +341,7 @@ export function FollowingDialog({
                   setError('');
                   setLoading(true);
                   void load()
-                    .catch(() => setError('关注列表加载失败，请稍后重试'))
+                    .catch(() => setError('关系列表加载失败，请稍后重试'))
                     .finally(() => setLoading(false));
                 }}
               >
@@ -301,41 +350,79 @@ export function FollowingDialog({
             </div>
           ) : null}
           {!loading && !error && items.length === 0 ? (
-            <p className="following-state">还没有关注任何人</p>
+            <p className="following-state">
+              {kind === 'following' ? '还没有关注任何人' : '还没有粉丝'}
+            </p>
           ) : null}
-          {items.map((user) => (
-            <article className="following-row" key={user.id}>
-              <button
-                className="following-user-link"
-                type="button"
-                onClick={() => {
-                  onClose();
-                  router.push(`/users/${encodeURIComponent(user.id)}`);
-                }}
-              >
-                <Avatar
-                  avatar={user.avatar}
-                  className="following-avatar"
-                  label={user.nickname}
-                />
-                <span>
-                  <strong>{user.nickname}</strong>
-                  <small>小蓝书号：{user.littleBlueBookId}</small>
-                  <em>{user.bio || '暂无简介'}</em>
-                </span>
-              </button>
-              <button
-                className="following-action"
-                type="button"
-                onClick={(event) => {
-                  unfollowTriggerRef.current = event.currentTarget;
-                  setConfirmTarget(user);
-                }}
-              >
-                已关注
-              </button>
-            </article>
-          ))}
+          {items.map((user) => {
+            const relation = user.viewer ?? {
+              authenticated: true,
+              isSelf: false,
+              following: true,
+              followedBy: false,
+              mutual: false,
+              canFollow: true,
+            };
+            return (
+              <article className="following-row" key={user.id}>
+                <button
+                  className="following-user-link"
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    router.push(
+                      relation.isSelf
+                        ? '/profile'
+                        : `/users/${encodeURIComponent(user.id)}`,
+                    );
+                  }}
+                >
+                  <Avatar
+                    avatar={user.avatar}
+                    className="following-avatar"
+                    label={user.nickname}
+                  />
+                  <span>
+                    <strong>{user.nickname}</strong>
+                    <small>小蓝书号：{user.littleBlueBookId}</small>
+                    <em>{user.bio || '暂无简介'}</em>
+                  </span>
+                </button>
+                {relation.isSelf ? (
+                  <span className="following-self">我</span>
+                ) : (
+                  <span className="following-relation-wrap">
+                    {relation.mutual ? (
+                      <small className="mutual-badge">互相关注</small>
+                    ) : null}
+                    <button
+                      className={`following-action ${relation.following ? 'following' : ''}`}
+                      type="button"
+                      disabled={busyId === user.id}
+                      aria-busy={busyId === user.id}
+                      onClick={(event) => {
+                        relationTriggerRef.current = event.currentTarget;
+                        if (!relation.authenticated) {
+                          onAuthenticationRequired?.();
+                          return;
+                        }
+                        if (relation.following) setConfirmTarget(user);
+                        else void setFollow(user, true);
+                      }}
+                    >
+                      {busyId === user.id
+                        ? '处理中…'
+                        : relation.following
+                          ? '已关注'
+                          : relation.followedBy
+                            ? '回关'
+                            : '关注'}
+                    </button>
+                  </span>
+                )}
+              </article>
+            );
+          })}
           {items.length > 0 && nextCursor ? (
             <button
               className="following-load-more"
@@ -352,8 +439,12 @@ export function FollowingDialog({
               {error}
             </p>
           ) : null}
+          {!confirmTarget && mutationError ? (
+            <p className="following-inline-error" role="alert">
+              {mutationError}
+            </p>
+          ) : null}
         </div>
-
         {confirmTarget ? (
           <div
             ref={confirmationRef}
@@ -368,16 +459,16 @@ export function FollowingDialog({
               <p id="following-confirm-description">
                 确认不再关注“{confirmTarget.nickname}”吗？
               </p>
-              {unfollowError ? <p role="alert">{unfollowError}</p> : null}
+              {mutationError ? <p role="alert">{mutationError}</p> : null}
               <footer>
                 <button
                   type="button"
-                  disabled={unfollowing}
+                  disabled={Boolean(busyId)}
                   onClick={() => {
                     setConfirmTarget(null);
-                    setUnfollowError('');
+                    setMutationError('');
                     window.setTimeout(
-                      () => unfollowTriggerRef.current?.focus(),
+                      () => relationTriggerRef.current?.focus(),
                       0,
                     );
                   }}
@@ -388,11 +479,11 @@ export function FollowingDialog({
                   ref={confirmButtonRef}
                   className="danger"
                   type="button"
-                  disabled={unfollowing}
-                  aria-busy={unfollowing}
-                  onClick={() => void unfollow()}
+                  disabled={Boolean(busyId)}
+                  aria-busy={Boolean(busyId)}
+                  onClick={() => void setFollow(confirmTarget, false)}
                 >
-                  {unfollowing ? '处理中…' : '确认取消关注'}
+                  {busyId ? '处理中…' : '确认取消关注'}
                 </button>
               </footer>
             </div>

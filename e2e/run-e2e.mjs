@@ -30,6 +30,9 @@ const pnpmCommand = pnpmCli
     : 'pnpm';
 const pnpmPrefix = pnpmCli ? [pnpmCli] : [];
 const playwrightArguments = process.argv.slice(2);
+const migrationProbeOnly = playwrightArguments.includes(
+  '--migration-probe-only',
+);
 
 function configuredPort(name, fallback) {
   const value = Number(process.env[name] ?? fallback);
@@ -812,6 +815,17 @@ async function verifyLegacyMigrations() {
     ),
     'utf8',
   );
+  const followerPaginationSql = readFileSync(
+    path.join(
+      repoRoot,
+      'backend',
+      'prisma',
+      'migrations',
+      '20260813000100_add_follower_pagination_index',
+      'migration.sql',
+    ),
+    'utf8',
+  );
   const channelSeedStart = channelSql.indexOf('INSERT INTO "channels"');
   const channelSeedEnd = channelSql.indexOf(
     '-- Add the relation as nullable',
@@ -1026,6 +1040,62 @@ async function verifyLegacyMigrations() {
     '-v',
     'ON_ERROR_STOP=1',
     '-c',
+    `INSERT INTO "users"
+      ("id", "email", "nickname", "createdAt", "updatedAt", "lastLoginAt",
+       "littleBlueBookId", "profileVersion", "role", "status", "authVersion")
+    VALUES
+      ('00000000-0000-4000-8000-000000000090',
+       'legacy-friend@example.com', '旧蓝友好友', CURRENT_TIMESTAMP,
+       CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, '9000000000',
+       '00000000-0000-4000-8000-000000000190', 'USER', 'ACTIVE', 1);
+     INSERT INTO "user_follows" ("followerId", "followedId", "createdAt")
+     VALUES (
+       '00000000-0000-4000-8000-000000000099',
+       '00000000-0000-4000-8000-000000000090',
+       '2026-08-10T00:00:00.000Z'
+     );
+     INSERT INTO "notifications"
+       ("id", "type", "recipientId", "actorId", "createdAt")
+     VALUES (
+       '00000000-0000-4000-8000-000000000091', 'USER_FOLLOWED',
+       '00000000-0000-4000-8000-000000000090',
+       '00000000-0000-4000-8000-000000000099',
+       '2026-08-10T00:01:00.000Z'
+     );
+     INSERT INTO "direct_conversations"
+       ("id", "firstParticipantId", "secondParticipantId", "lastMessageAt",
+        "createdAt", "updatedAt")
+     VALUES (
+       '00000000-0000-4000-8000-000000000092',
+       '00000000-0000-4000-8000-000000000090',
+       '00000000-0000-4000-8000-000000000099',
+       '2026-08-10T00:02:00.000Z', '2026-08-10T00:02:00.000Z',
+       '2026-08-10T00:02:00.000Z'
+     );
+     INSERT INTO "direct_messages"
+       ("id", "conversationId", "senderId", "content", "clientRequestId",
+        "createdAt")
+     VALUES (
+       '00000000-0000-4000-8000-000000000093',
+       '00000000-0000-4000-8000-000000000092',
+       '00000000-0000-4000-8000-000000000099', '迁移前私信',
+       'legacy-spec016-message', '2026-08-10T00:02:00.000Z'
+     );`,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
+    followerPaginationSql,
+  );
+  await psql(
+    '-d',
+    migrationDatabase,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-c',
     channelSeedSql,
   );
   await psql(
@@ -1157,10 +1227,45 @@ async function verifyLegacyMigrations() {
       ) THEN
         RAISE EXCEPTION 'SPEC-015 governance constraints or indexes missing';
       END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE tablename = 'user_follows'
+          AND indexname = 'user_follows_followedId_createdAt_followerId_idx'
+          AND indexdef LIKE '%("followedId", "createdAt" DESC, "followerId" DESC)%'
+      ) OR NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'user_follows_no_self_check'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-016 follower pagination index or relationship constraint missing';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM "user_follows"
+        WHERE "followerId" = '00000000-0000-4000-8000-000000000099'
+          AND "followedId" = '00000000-0000-4000-8000-000000000090'
+          AND "createdAt" = '2026-08-10T00:00:00.000Z'
+      ) OR NOT EXISTS (
+        SELECT 1 FROM "notifications"
+        WHERE "id" = '00000000-0000-4000-8000-000000000091'
+          AND "type" = 'USER_FOLLOWED'
+          AND "recipientId" = '00000000-0000-4000-8000-000000000090'
+          AND "actorId" = '00000000-0000-4000-8000-000000000099'
+      ) OR NOT EXISTS (
+        SELECT 1 FROM "direct_conversations"
+        WHERE "id" = '00000000-0000-4000-8000-000000000092'
+          AND "firstParticipantId" = '00000000-0000-4000-8000-000000000090'
+          AND "secondParticipantId" = '00000000-0000-4000-8000-000000000099'
+      ) OR NOT EXISTS (
+        SELECT 1 FROM "direct_messages"
+        WHERE "id" = '00000000-0000-4000-8000-000000000093'
+          AND "conversationId" = '00000000-0000-4000-8000-000000000092'
+          AND "content" = '迁移前私信'
+      ) THEN
+        RAISE EXCEPTION 'SPEC-016 migration changed historical social data';
+      END IF;
       IF (SELECT count(*) FROM "note_likes") <> 0
          OR (SELECT count(*) FROM "note_favorites") <> 1
          OR (SELECT count(*) FROM "note_comments") <> 1
-         OR (SELECT count(*) FROM "user_follows") <> 0 THEN
+         OR (SELECT count(*) FROM "user_follows") <> 1 THEN
         RAISE EXCEPTION 'SPEC-009 migration changed historical interactions';
       END IF;
       IF NOT EXISTS (
@@ -1200,8 +1305,8 @@ async function verifyLegacyMigrations() {
       ) THEN
         RAISE EXCEPTION 'SPEC-008 migration changed legacy content';
       END IF;
-      IF (SELECT count(*) FROM "notifications") <> 0 THEN
-        RAISE EXCEPTION 'SPEC-009 backfilled historical notifications';
+      IF (SELECT count(*) FROM "notifications") <> 1 THEN
+        RAISE EXCEPTION 'SPEC-009 or SPEC-016 changed historical notifications';
       END IF;
       IF (
         SELECT count(*) FROM pg_indexes
@@ -1258,9 +1363,9 @@ async function verifyLegacyMigrations() {
       END IF;
       IF (SELECT count(*) FROM "comment_likes") <> 0
          OR (SELECT count(*) FROM "note_view_subjects") <> 0
-         OR (SELECT count(*) FROM "direct_conversations") <> 0
-         OR (SELECT count(*) FROM "direct_messages") <> 0 THEN
-        RAISE EXCEPTION 'SPEC-011 unexpectedly backfilled new records';
+         OR (SELECT count(*) FROM "direct_conversations") <> 1
+         OR (SELECT count(*) FROM "direct_messages") <> 1 THEN
+        RAISE EXCEPTION 'SPEC-011 or SPEC-016 changed historical engagement data';
       END IF;
       IF (
         SELECT count(*) FROM pg_indexes
@@ -1505,6 +1610,7 @@ async function main() {
   );
 
   await verifyLegacyMigrations();
+  if (migrationProbeOnly) return;
   await runPnpm(['--filter', 'backend', 'db:deploy'], {
     env: applicationEnvironment,
   });

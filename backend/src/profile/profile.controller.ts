@@ -125,6 +125,28 @@ export class ProfileController {
       data: await this.profiles.following(
         readCookie(request, SESSION_COOKIE_NAME),
         query.cursor,
+        query.limit,
+      ),
+    };
+  }
+
+  @Get('me/followers')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'List only the current user followers privately' })
+  @ApiOkResponse({ type: FollowingPageResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'AUTHENTICATION_REQUIRED',
+    type: ProfileAuthenticationRequiredErrorResponseDto,
+  })
+  async followers(
+    @Req() request: Request,
+    @Query() query: ListFollowingDto,
+  ): Promise<{ data: FollowingPage }> {
+    return {
+      data: await this.profiles.followers(
+        readCookie(request, SESSION_COOKIE_NAME),
+        query.cursor,
+        query.limit,
       ),
     };
   }

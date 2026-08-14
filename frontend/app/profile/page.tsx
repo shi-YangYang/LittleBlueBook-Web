@@ -14,7 +14,10 @@ import {
 import { AuthDialog } from '../_components/auth-dialog';
 import { Avatar, type ProfileAvatar } from '../_components/avatar';
 import { Icon } from '../_components/icon';
-import { FollowingDialog } from '../_components/following-dialog';
+import {
+  FollowingDialog,
+  type RelationshipKind,
+} from '../_components/following-dialog';
 import { NoteFeed } from '../_components/note-feed';
 import { NotificationNavItem } from '../_components/notification-nav-item';
 import { SearchTrigger } from '../_components/search-dialog';
@@ -117,8 +120,10 @@ export default function ProfilePage() {
   const [toast, setToast] = useState('');
   const [reloadVersion, setReloadVersion] = useState(0);
   const [authOpen, setAuthOpen] = useState(false);
-  const [followingOpen, setFollowingOpen] = useState(false);
+  const [relationshipOpen, setRelationshipOpen] =
+    useState<RelationshipKind | null>(null);
   const followingButtonRef = useRef<HTMLButtonElement>(null);
+  const followerButtonRef = useRef<HTMLButtonElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const editProfileLinkRef = useRef<HTMLAnchorElement>(null);
   const logoutButtonRef = useRef<HTMLButtonElement>(null);
@@ -479,15 +484,22 @@ export default function ProfilePage() {
                         ref={followingButtonRef}
                         type="button"
                         aria-label={`查看我的关注，共 ${profile.stats.following} 人`}
-                        onClick={() => setFollowingOpen(true)}
+                        onClick={() => setRelationshipOpen('following')}
                       >
                         <span>关注</span>
                         <strong>{profile.stats.following}</strong>
                       </button>
                     </div>
                     <div>
-                      <span>粉丝</span>
-                      <strong>{profile.stats.followers}</strong>
+                      <button
+                        ref={followerButtonRef}
+                        type="button"
+                        aria-label={`查看我的粉丝，共 ${profile.stats.followers} 人`}
+                        onClick={() => setRelationshipOpen('followers')}
+                      >
+                        <span>粉丝</span>
+                        <strong>{profile.stats.followers}</strong>
+                      </button>
                     </div>
                     <div>
                       <span>获赞与收藏</span>
@@ -605,10 +617,19 @@ export default function ProfilePage() {
         onToast={setToast}
       />
       <FollowingDialog
-        open={followingOpen}
+        open={relationshipOpen !== null}
+        kind={relationshipOpen ?? 'following'}
         onClose={() => {
-          setFollowingOpen(false);
-          window.setTimeout(() => followingButtonRef.current?.focus(), 0);
+          const kind = relationshipOpen;
+          setRelationshipOpen(null);
+          window.setTimeout(
+            () =>
+              (kind === 'followers'
+                ? followerButtonRef.current
+                : followingButtonRef.current
+              )?.focus(),
+            0,
+          );
         }}
         onFollowingCountChange={(following) =>
           setProfile((current) =>
@@ -621,9 +642,10 @@ export default function ProfilePage() {
           )
         }
         onAuthenticationRequired={() => {
-          setFollowingOpen(false);
+          const kind = relationshipOpen;
+          setRelationshipOpen(null);
           pendingInteractionRef.current = async () => {
-            setFollowingOpen(true);
+            setRelationshipOpen(kind ?? 'following');
           };
           setAuthOpen(true);
         }}

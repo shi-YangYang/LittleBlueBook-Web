@@ -66,6 +66,12 @@ class SearchViewerDto {
 
 class PublicProfileViewerDto extends SearchViewerDto {
   @ApiProperty({ type: Boolean })
+  followedBy!: boolean;
+
+  @ApiProperty({ type: Boolean })
+  mutual!: boolean;
+
+  @ApiProperty({ type: Boolean })
   canMessage!: boolean;
 }
 

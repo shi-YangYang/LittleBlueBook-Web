@@ -9,6 +9,10 @@ import {
 } from '../../_components/auth-dialog';
 import { Avatar } from '../../_components/avatar';
 import { Icon } from '../../_components/icon';
+import {
+  FollowingDialog,
+  type RelationshipKind,
+} from '../../_components/following-dialog';
 import { NoteFeed } from '../../_components/note-feed';
 import { PageSidebar, PageTopbar } from '../../_components/page-chrome';
 import { ReportDialog } from '../../_components/report-dialog';
@@ -41,6 +45,10 @@ export default function PublicUserPage() {
   const [toast, setToast] = useState('');
   const [reportOpen, setReportOpen] = useState(false);
   const [blockOpen, setBlockOpen] = useState(false);
+  const [relationshipOpen, setRelationshipOpen] =
+    useState<RelationshipKind | null>(null);
+  const followingStatRef = useRef<HTMLButtonElement>(null);
+  const followerStatRef = useRef<HTMLButtonElement>(null);
   const [blocking, setBlocking] = useState(false);
   const blockDialogRef = useSafetyDialog(
     blockOpen,
@@ -111,10 +119,13 @@ export default function PublicUserPage() {
     if (followingBusy) return;
     setFollowingBusy(true);
     try {
-      const result = await apiRequest<{ following: boolean }>(
-        `/users/${encodeURIComponent(userId)}/follow`,
-        { method: target ? 'PUT' : 'DELETE' },
-      );
+      const result = await apiRequest<{
+        following: boolean;
+        followedBy: boolean;
+        mutual: boolean;
+      }>(`/users/${encodeURIComponent(userId)}/follow`, {
+        method: target ? 'PUT' : 'DELETE',
+      });
       const refreshed = await apiRequest<PublicUserProfileData>(
         `/users/${encodeURIComponent(userId)}/profile`,
       );
@@ -125,6 +136,8 @@ export default function PublicUserPage() {
           viewer: {
             ...refreshed.viewer,
             following: result.following,
+            followedBy: result.followedBy,
+            mutual: result.mutual,
           },
         },
       }));
@@ -250,8 +263,13 @@ export default function PublicUserPage() {
                           ? '处理中…'
                           : profile.viewer.following
                             ? '已关注'
-                            : '关注'}
+                            : profile.viewer.followedBy
+                              ? '回关'
+                              : '关注'}
                       </button>
+                      {profile.viewer.mutual ? (
+                        <span className="mutual-badge">互相关注</span>
+                      ) : null}
                       <button
                         className="public-profile-message-action"
                         type="button"
@@ -306,20 +324,34 @@ export default function PublicUserPage() {
                   {profile.bio ? (
                     <p className="profile-bio">{profile.bio}</p>
                   ) : null}
-                  <dl className="profile-stats" aria-label="公开用户统计">
+                  <div className="profile-stats" aria-label="公开用户统计">
                     <div>
-                      <dt>关注</dt>
-                      <dd>{profile.stats.following}</dd>
+                      <button
+                        ref={followingStatRef}
+                        type="button"
+                        aria-label={`查看${profile.nickname}的关注，共 ${profile.stats.following} 人`}
+                        onClick={() => setRelationshipOpen('following')}
+                      >
+                        <span>关注</span>
+                        <strong>{profile.stats.following}</strong>
+                      </button>
                     </div>
                     <div>
-                      <dt>粉丝</dt>
-                      <dd>{profile.stats.followers}</dd>
+                      <button
+                        ref={followerStatRef}
+                        type="button"
+                        aria-label={`查看${profile.nickname}的粉丝，共 ${profile.stats.followers} 人`}
+                        onClick={() => setRelationshipOpen('followers')}
+                      >
+                        <span>粉丝</span>
+                        <strong>{profile.stats.followers}</strong>
+                      </button>
                     </div>
                     <div>
                       <dt>获赞与收藏</dt>
                       <dd>{profile.stats.receivedLikesAndFavorites}</dd>
                     </div>
-                  </dl>
+                  </div>
                 </div>
               </section>
               <section className="profile-content" aria-label="公开笔记">
@@ -391,6 +423,32 @@ export default function PublicUserPage() {
           }
         }}
         onToast={setToast}
+      />
+      <FollowingDialog
+        open={relationshipOpen !== null}
+        ownerId={userId}
+        kind={relationshipOpen ?? 'following'}
+        title={relationshipOpen === 'followers' ? 'TA 的粉丝' : 'TA 的关注'}
+        onClose={() => {
+          const kind = relationshipOpen;
+          setRelationshipOpen(null);
+          window.setTimeout(
+            () =>
+              (kind === 'followers'
+                ? followerStatRef.current
+                : followingStatRef.current
+              )?.focus(),
+            0,
+          );
+        }}
+        onAuthenticationRequired={() => {
+          const kind = relationshipOpen;
+          setRelationshipOpen(null);
+          pendingActionRef.current = async () => {
+            setRelationshipOpen(kind ?? 'following');
+          };
+          setAuthOpen(true);
+        }}
       />
       <ReportDialog
         open={reportOpen}

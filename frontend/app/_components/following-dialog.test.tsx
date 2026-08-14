@@ -208,4 +208,104 @@ describe('FollowingDialog', () => {
     expect(screen.getByText('会话保留蓝友')).toBeVisible();
     expect(onAuthenticationRequired).toHaveBeenCalledTimes(1);
   });
+
+  it('shows public follower relationship states and gates anonymous follow', async () => {
+    const onAuthenticationRequired = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        response({
+          items: [
+            {
+              id: '00000000-0000-4000-8000-000000000204',
+              nickname: '匿名可见蓝友',
+              littleBlueBookId: '10002004',
+              bio: '公开简介',
+              avatar: { type: 'initial', value: '匿' },
+              viewer: {
+                authenticated: false,
+                isSelf: false,
+                following: false,
+                followedBy: false,
+                mutual: false,
+                canFollow: false,
+              },
+            },
+          ],
+          nextCursor: null,
+        }),
+      ) as unknown as typeof fetch,
+    );
+
+    render(
+      <FollowingDialog
+        open
+        ownerId="00000000-0000-4000-8000-000000000299"
+        kind="followers"
+        title="TA 的粉丝"
+        onClose={vi.fn()}
+        onAuthenticationRequired={onAuthenticationRequired}
+      />,
+    );
+
+    expect(await screen.findByText('匿名可见蓝友')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '关注' }));
+    expect(onAuthenticationRequired).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '关注' })).toBeVisible();
+  });
+
+  it('renders back-follow and mutual states from authoritative viewer data', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        response({
+          items: [
+            {
+              id: '00000000-0000-4000-8000-000000000205',
+              nickname: '待回关蓝友',
+              littleBlueBookId: '10002005',
+              bio: null,
+              avatar: { type: 'initial', value: '待' },
+              viewer: {
+                authenticated: true,
+                isSelf: false,
+                following: false,
+                followedBy: true,
+                mutual: false,
+                canFollow: true,
+              },
+            },
+            {
+              id: '00000000-0000-4000-8000-000000000206',
+              nickname: '互关蓝友',
+              littleBlueBookId: '10002006',
+              bio: null,
+              avatar: { type: 'initial', value: '互' },
+              viewer: {
+                authenticated: true,
+                isSelf: false,
+                following: true,
+                followedBy: true,
+                mutual: true,
+                canFollow: true,
+              },
+            },
+          ],
+          nextCursor: null,
+        }),
+      ) as unknown as typeof fetch,
+    );
+
+    render(
+      <FollowingDialog
+        open
+        ownerId="00000000-0000-4000-8000-000000000299"
+        kind="followers"
+        onClose={vi.fn()}
+      />,
+    );
+    expect(await screen.findByRole('button', { name: '回关' })).toBeVisible();
+    expect(screen.getByText('互相关注')).toBeVisible();
+    expect(screen.getByRole('button', { name: '已关注' })).toBeVisible();
+  });
 });

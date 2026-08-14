@@ -30,6 +30,7 @@ export type NoteCard = {
 export type NotePage = {
   items: NoteCard[];
   nextCursor: string | null;
+  emptyReason?: 'NO_FOLLOWS' | 'NO_NOTES';
 };
 
 export type NoteDetail = {

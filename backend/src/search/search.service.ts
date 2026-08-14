@@ -399,8 +399,8 @@ export class SearchService {
       relation,
       reverseRelation,
     ] = await Promise.all([
-      this.prisma.userFollow.count({ where: { followerId: user.id } }),
-      this.prisma.userFollow.count({ where: { followedId: user.id } }),
+      this.visibleRelationshipCount(user.id, 'following', viewer?.id),
+      this.visibleRelationshipCount(user.id, 'followers', viewer?.id),
       this.prisma.noteLike.count({
         where: {
           note: { authorId: user.id, moderationStatus: 'VISIBLE' },
@@ -452,6 +452,8 @@ export class SearchService {
         authenticated: Boolean(viewer),
         isSelf,
         following: Boolean(relation),
+        followedBy: Boolean(reverseRelation),
+        mutual: Boolean(relation && reverseRelation),
         canFollow: Boolean(viewer) && !isSelf,
         canMessage:
           Boolean(viewer) && !isSelf && Boolean(relation && reverseRelation),
@@ -571,6 +573,36 @@ export class SearchService {
             })
           : null,
     };
+  }
+
+  private async visibleRelationshipCount(
+    ownerId: string,
+    kind: 'following' | 'followers',
+    viewerId?: string,
+  ): Promise<number> {
+    const ownerBlockedIds = this.safety
+      ? await this.safety.blockedIds(ownerId)
+      : [];
+    const viewerBlockedIds =
+      viewerId && viewerId !== ownerId && this.safety
+        ? await this.safety.blockedIds(viewerId)
+        : [];
+    const blockedIds = [...new Set([...ownerBlockedIds, ...viewerBlockedIds])];
+    return this.prisma.userFollow.count({
+      where: {
+        ...(kind === 'following'
+          ? { followerId: ownerId }
+          : { followedId: ownerId }),
+        ...(kind === 'following'
+          ? { followed: { ageRestrictedAt: null, status: 'ACTIVE' } }
+          : { follower: { ageRestrictedAt: null, status: 'ACTIVE' } }),
+        ...(blockedIds.length > 0
+          ? kind === 'following'
+            ? { followedId: { notIn: blockedIds } }
+            : { followerId: { notIn: blockedIds } }
+          : {}),
+      },
+    });
   }
 
   private noteCard(row: NoteSearchRow, viewerId?: string): NoteCard {

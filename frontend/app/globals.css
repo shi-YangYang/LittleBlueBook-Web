@@ -1411,6 +1411,34 @@ img.search-user-avatar {
   cursor: pointer;
 }
 
+.following-relation-wrap {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.mutual-badge,
+.following-self {
+  color: #5d6773;
+  font-size: 12px;
+}
+
+.following-self {
+  padding: 0 12px;
+}
+
+.following-action.following {
+  border-color: #dfe4ea;
+  background: #f7f8fa;
+  color: #68717d;
+}
+
+.following-action:focus-visible,
+.following-user-link:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
 .following-state {
   min-height: 260px;
   margin: 0;

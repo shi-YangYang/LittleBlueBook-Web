@@ -28,6 +28,7 @@ export type NoteCardData = {
 export type NotePageData = {
   items: NoteCardData[];
   nextCursor: string | null;
+  emptyReason?: 'NO_FOLLOWS' | 'NO_NOTES';
 };
 
 export type NoteDetailData = {
